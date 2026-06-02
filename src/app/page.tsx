@@ -4,18 +4,62 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AkennaFace } from '@/components/AkennaFace';
 import { akennaAIChatInteraction } from '@/ai/flows/akenna-ai-chat-interaction';
 import { Button } from '@/components/ui/button';
-import { Mic, MicOff, Power } from 'lucide-react';
+import { MicOff, Power } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function AkennaPage() {
   const [status, setStatus] = useState<'idle' | 'listening' | 'processing' | 'speaking'>('idle');
   const [isInitialized, setIsInitialized] = useState(false);
   const [volume, setVolume] = useState(0);
+  
   const audioContextRef = useRef<AudioContext | null>(null);
   const recognitionRef = useRef<any>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const micAnalyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+
+  // Initialize Microphone analysis for user voice visualization
+  const startMicAnalysis = useCallback(async () => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext();
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = stream;
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      const analyser = audioContextRef.current.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      micAnalyserRef.current = analyser;
+
+      const updateMicVolume = () => {
+        if (micAnalyserRef.current && status === 'listening') {
+          const bufferLength = micAnalyserRef.current.frequencyBinCount;
+          const dataArray = new Uint8Array(bufferLength);
+          micAnalyserRef.current.getByteFrequencyData(dataArray);
+          
+          let sum = 0;
+          for (let i = 0; i < bufferLength; i++) {
+            sum += dataArray[i];
+          }
+          const average = sum / bufferLength;
+          setVolume(average / 128);
+          animationFrameRef.current = requestAnimationFrame(updateMicVolume);
+        } else if (status !== 'speaking') {
+          setVolume(0);
+        }
+      };
+      
+      if (status === 'listening') {
+        updateMicVolume();
+      }
+    } catch (err) {
+      console.error("Error accessing microphone for animation:", err);
+    }
+  }, [status]);
 
   // Initialize Speech Recognition
   const initSpeech = useCallback(() => {
@@ -45,9 +89,12 @@ export default function AkennaPage() {
       };
 
       recognition.onend = () => {
-        // If we are still "initialized" and not currently processing or speaking, restart listening
         if (isInitialized && status !== 'processing' && status !== 'speaking') {
-          recognition.start();
+          try {
+            recognition.start();
+          } catch (e) {
+            // Already started or busy
+          }
         }
       };
 
@@ -58,10 +105,12 @@ export default function AkennaPage() {
   const handleAkennaQuery = async (text: string) => {
     if (status === 'processing' || status === 'speaking') return;
     
-    // Stop listening while processing to avoid hearing itself
     if (recognitionRef.current) recognitionRef.current.stop();
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     
+    setVolume(0);
     setStatus('processing');
+    
     try {
       const response = await akennaAIChatInteraction({ text });
       playResponse(response.audio);
@@ -79,6 +128,10 @@ export default function AkennaPage() {
       audioContextRef.current = new AudioContext();
     }
 
+    if (audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume();
+    }
+
     const audio = new Audio(audioBase64);
     audioRef.current = audio;
 
@@ -90,18 +143,20 @@ export default function AkennaPage() {
     analyserRef.current = analyser;
 
     const updateVolume = () => {
-      const bufferLength = analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
-      analyser.getByteFrequencyData(dataArray);
-      
-      let sum = 0;
-      for (let i = 0; i < bufferLength; i++) {
-        sum += dataArray[i];
+      if (analyserRef.current && status === 'speaking') {
+        const bufferLength = analyserRef.current.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        analyserRef.current.getByteFrequencyData(dataArray);
+        
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i];
+        }
+        const average = sum / bufferLength;
+        setVolume(average / 128);
+        
+        animationFrameRef.current = requestAnimationFrame(updateVolume);
       }
-      const average = sum / bufferLength;
-      setVolume(average / 128); // Normalize to approx 0-1
-      
-      animationFrameRef.current = requestAnimationFrame(updateVolume);
     };
 
     audio.onplay = () => {
@@ -112,7 +167,6 @@ export default function AkennaPage() {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       setVolume(0);
       setStatus('listening');
-      // Restart listening after speech ends
       if (recognitionRef.current) recognitionRef.current.start();
     };
 
@@ -129,26 +183,35 @@ export default function AkennaPage() {
       setIsInitialized(false);
       if (recognitionRef.current) recognitionRef.current.stop();
       if (audioRef.current) audioRef.current.pause();
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach(track => track.stop());
+      }
       setStatus('idle');
+      setVolume(0);
     }
   };
 
   useEffect(() => {
     if (isInitialized) {
       initSpeech();
+      startMicAnalysis();
       if (recognitionRef.current) {
-        recognitionRef.current.start();
+        try {
+          recognitionRef.current.start();
+        } catch (e) {}
       }
     }
     return () => {
       if (recognitionRef.current) recognitionRef.current.stop();
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach(track => track.stop());
+      }
     };
-  }, [isInitialized, initSpeech]);
+  }, [isInitialized, initSpeech, startMicAnalysis]);
 
   return (
     <main className="min-h-screen w-full flex flex-col items-center justify-center relative bg-[#050E10] px-6 py-12">
-      {/* Central Visual Focus */}
       <div className="flex-1 flex items-center justify-center w-full">
         <AkennaFace 
           status={status} 
@@ -157,7 +220,6 @@ export default function AkennaPage() {
         />
       </div>
 
-      {/* Controller Area */}
       <div className="fixed bottom-12 z-10 flex flex-col items-center gap-6">
         {!isInitialized ? (
           <Button 
@@ -196,7 +258,6 @@ export default function AkennaPage() {
         )}
       </div>
 
-      {/* Decorative Accents */}
       <div className="fixed top-12 left-12 opacity-10 font-headline tracking-tighter pointer-events-none select-none">
         <div className="text-4xl font-bold text-[#33E0FF]">A K E N N A</div>
         <div className="text-sm text-[#3377FF] pl-1">V.01 LIVE_STREAM</div>

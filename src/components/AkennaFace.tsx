@@ -38,13 +38,14 @@ export const AkennaFace: React.FC<AkennaFaceProps> = ({ status, isSpeaking, volu
       <div className="h-20 flex items-center justify-center overflow-visible">
         <div 
           style={{ 
-            height: isSpeaking ? `${Math.max(4, volume * 60)}px` : '4px',
-            width: isSpeaking ? `${80 + volume * 40}px` : '60px',
-            opacity: isSpeaking || status === 'listening' ? 1 : 0.2
+            height: `${4 + (volume * 50)}px`,
+            width: `${60 + (volume * 100)}px`,
+            opacity: status !== 'idle' ? 1 : 0.2,
+            boxShadow: volume > 0.1 ? `0 0 ${10 + volume * 20}px rgba(51, 224, 255, ${0.4 + volume * 0.6})` : 'none'
           }}
           className={cn(
-            "bg-[#33E0FF] rounded-full transition-all duration-75 ease-out glow-cyan",
-            !isSpeaking && "w-16 h-1 opacity-20"
+            "bg-[#33E0FF] rounded-full transition-all duration-75 ease-out",
+            status === 'idle' && "w-16 h-1 opacity-20"
           )}
         />
       </div>
