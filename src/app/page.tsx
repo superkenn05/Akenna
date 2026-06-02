@@ -5,6 +5,7 @@ import { AkennaFace } from '@/components/AkennaFace';
 import { akennaAIChatInteraction } from '@/ai/flows/akenna-ai-chat-interaction';
 import { Button } from '@/components/ui/button';
 import { Mic, MicOff, Power } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export default function AkennaPage() {
   const [status, setStatus] = useState<'idle' | 'listening' | 'processing' | 'speaking'>('idle');
