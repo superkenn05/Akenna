@@ -163,6 +163,7 @@ export default function AkennaPage() {
         if (event.error === 'not-allowed') {
           setError("Microphone access denied by browser.");
           setIsInitialized(false);
+          setStatus('idle');
         }
       };
 
@@ -174,7 +175,7 @@ export default function AkennaPage() {
     } else {
       setError("Speech recognition engine not supported on this platform.");
     }
-  }, [isInitialized, status, history, voiceEnabled]);
+  }, [isInitialized, status]);
 
   const playBrowserFallback = (text: string) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -270,7 +271,12 @@ export default function AkennaPage() {
         audioContextRef.current = ctx;
         audioRef.current = audio;
         analyserRef.current = analyser;
-        setIsInitialized(true);
+        
+        // Brief delay to allow eyes transition to be visible
+        setTimeout(() => {
+          setIsInitialized(true);
+          setStatus('listening');
+        }, 100);
       } catch (err) {
         setError("Audio system initialization failed. Please refresh.");
       }
@@ -382,13 +388,13 @@ export default function AkennaPage() {
         {!isInitialized ? (
           <Button 
             onClick={toggleAkenna}
-            className="rounded-full px-8 py-8 bg-transparent border-2 border-[#33E0FF] text-[#33E0FF] hover:bg-[#33E0FF]/10 group"
+            className="rounded-full px-8 py-8 bg-transparent border-2 border-[#33E0FF] text-[#33E0FF] hover:bg-[#33E0FF]/10 group animate-in fade-in slide-in-from-bottom-4"
           >
             <Power className="mr-3 w-6 h-6 group-hover:scale-110 transition-transform" />
             <span className="font-headline tracking-widest uppercase font-bold text-lg">Initialize Akenna</span>
           </Button>
         ) : (
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 animate-in zoom-in-95 duration-500">
              <Button 
               variant="outline"
               size="icon"
