@@ -76,7 +76,6 @@ export default function AkennaPage() {
     setAiTextResponse('');
     setUserTranscript(text);
 
-    // Stop recognition while processing to avoid overlap
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch(e) {}
     }
@@ -128,9 +127,7 @@ export default function AkennaPage() {
     if (recognitionRef.current && isInitialized && status !== 'processing' && status !== 'speaking') {
       try { 
         recognitionRef.current.start(); 
-      } catch (e) {
-        // Recognition might already be running
-      }
+      } catch (e) {}
     }
   };
 
@@ -161,7 +158,7 @@ export default function AkennaPage() {
       recognition.onerror = (event: any) => {
         if (event.error === 'aborted' || event.error === 'no-speech') return;
         if (event.error === 'not-allowed') {
-          setError("Microphone access denied by browser.");
+          setError("Microphone access denied.");
           setIsInitialized(false);
           setStatus('idle');
         }
@@ -173,7 +170,7 @@ export default function AkennaPage() {
 
       recognitionRef.current = recognition;
     } else {
-      setError("Speech recognition engine not supported on this platform.");
+      setError("Speech recognition engine not supported.");
     }
   }, [isInitialized, status]);
 
@@ -275,7 +272,7 @@ export default function AkennaPage() {
         setIsInitialized(true);
         setStatus('listening');
       } catch (err) {
-        setError("Audio system initialization failed. Please refresh.");
+        setError("Audio system initialization failed.");
       }
     } else {
       cleanup();
@@ -305,24 +302,27 @@ export default function AkennaPage() {
 
   return (
     <main className="min-h-screen w-full flex flex-col items-center justify-center relative bg-[#050E10] px-6 py-12 overflow-hidden">
-      {/* Dialogue Overlay */}
-      {(userTranscript || aiTextResponse) && (
-        <div className="fixed top-24 left-0 right-0 z-20 flex flex-col items-center px-6 gap-4 pointer-events-none select-none">
-          {userTranscript && (
-            <div className="bg-white/5 border border-white/10 rounded-2xl px-6 py-3 max-w-lg backdrop-blur-sm animate-in fade-in slide-in-from-top-4">
-              <div className="text-[10px] text-white/40 uppercase tracking-widest mb-1 font-bold">You</div>
-              <div className="text-white/80 text-sm italic">"{userTranscript}"</div>
+      
+      {/* User Dialogue Overlay - Top Right */}
+      {userTranscript && (
+        <div className="fixed top-8 right-8 z-30 flex flex-col items-end max-w-[30%] pointer-events-none select-none animate-in fade-in slide-in-from-right-4">
+          <div className="bg-white/5 border border-white/10 rounded-2xl px-6 py-3 backdrop-blur-sm shadow-lg">
+            <div className="text-[10px] text-white/40 uppercase tracking-widest mb-1 font-bold text-right">You</div>
+            <div className="text-white/80 text-sm italic text-right">"{userTranscript}"</div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Dialogue Overlay - Top Center */}
+      {aiTextResponse && (
+        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-20 w-full max-w-xl px-6 pointer-events-none select-none animate-in fade-in zoom-in-95">
+          <div className="bg-[#33E0FF]/5 border border-[#33E0FF]/20 rounded-2xl px-6 py-4 backdrop-blur-md shadow-2xl">
+            <div className="flex items-center gap-2 mb-2">
+              <MessageSquare className="w-3 h-3 text-[#33E0FF]" />
+              <span className="text-[10px] text-[#33E0FF] uppercase tracking-widest font-bold">Akenna</span>
             </div>
-          )}
-          {aiTextResponse && (
-            <div className="bg-[#33E0FF]/5 border border-[#33E0FF]/20 rounded-2xl px-6 py-4 max-w-xl backdrop-blur-md animate-in fade-in zoom-in-95">
-              <div className="flex items-center gap-2 mb-2">
-                <MessageSquare className="w-3 h-3 text-[#33E0FF]" />
-                <span className="text-[10px] text-[#33E0FF] uppercase tracking-widest font-bold">Akenna</span>
-              </div>
-              <div className="text-white text-base leading-relaxed">{aiTextResponse}</div>
-            </div>
-          )}
+            <div className="text-white text-base leading-relaxed">{aiTextResponse}</div>
+          </div>
         </div>
       )}
 
@@ -330,10 +330,9 @@ export default function AkennaPage() {
         <AkennaFace status={status} isSpeaking={status === 'speaking'} volume={volume} />
       </div>
 
-      {/* Control Area - Ghost UI (Visible on Hover/Interaction) */}
-      <div className="fixed bottom-12 z-30 flex flex-col items-center gap-6 w-full max-w-md px-4 group/controls transition-all duration-500">
+      {/* Control Area - Stealth Mode (Hover to Reveal) */}
+      <div className="fixed bottom-12 z-40 flex flex-col items-center gap-6 w-full max-w-md px-4 group/controls transition-all duration-500">
         
-        {/* Error Messages (Always visible if exists) */}
         {error && (
           <div className="bg-destructive/20 text-destructive text-xs px-4 py-2 rounded-full border border-destructive/30 flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 mb-2 text-center max-w-[90vw]">
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -344,11 +343,11 @@ export default function AkennaPage() {
         <div className="flex flex-col items-center gap-6 w-full opacity-0 group-hover/controls:opacity-100 transition-opacity duration-300">
           
           {isInitialized && (
-            <div className="flex items-center gap-6 bg-white/5 px-6 py-3 rounded-full border border-white/10 backdrop-blur-sm pointer-events-auto">
+            <div className="flex items-center gap-6 bg-white/5 px-6 py-3 rounded-full border border-white/10 backdrop-blur-sm pointer-events-auto shadow-xl">
               <div className="flex items-center gap-3">
                 {voiceEnabled ? <Volume2 className="w-4 h-4 text-[#33E0FF]" /> : <VolumeX className="w-4 h-4 text-white/40" />}
                 <Switch checked={voiceEnabled} onCheckedChange={setVoiceEnabled} />
-                <Label className="text-[10px] uppercase tracking-wider text-white/60">Voice</Label>
+                <Label className="text-[10px] uppercase tracking-wider text-white/60">Voice Response</Label>
               </div>
               <Separator orientation="vertical" className="h-6 bg-white/10" />
               <Button 
@@ -363,22 +362,22 @@ export default function AkennaPage() {
           )}
 
           {isInitialized && showDiagnostics && (
-            <div className="w-full bg-white/5 border border-white/10 rounded-xl p-4 mb-2 backdrop-blur-md animate-in fade-in zoom-in-95 pointer-events-auto flex flex-col gap-3">
+            <div className="w-full bg-black/40 border border-white/10 rounded-xl p-4 mb-2 backdrop-blur-md animate-in fade-in zoom-in-95 pointer-events-auto flex flex-col gap-3 shadow-2xl">
               <div className="flex gap-2">
                 <Input 
                   value={testInput}
                   onChange={(e) => setTestInput(e.target.value)}
-                  placeholder="Type to chat..."
+                  placeholder="Type a query..."
                   className="bg-black/40 border-white/10 text-white text-xs h-9"
                   onKeyDown={(e) => e.key === 'Enter' && handleAkennaQuery(testInput)}
                 />
-                <Button onClick={() => handleAkennaQuery(testInput)} className="bg-[#33E0FF] text-black h-9 px-3">
+                <Button onClick={() => handleAkennaQuery(testInput)} className="bg-[#33E0FF] text-black h-9 px-3 hover:bg-[#33E0FF]/80">
                   <Send className="w-4 h-4" />
                 </Button>
               </div>
               <Button 
                 variant="outline" 
-                onClick={() => handleAkennaQuery("Neural system online. How can I assist you?")}
+                onClick={() => playBrowserFallback("System voice test active. All modules are within normal parameters.")}
                 className="w-full text-[10px] uppercase tracking-widest border-white/10 bg-white/5 h-8 hover:bg-[#33E0FF]/20"
               >
                 <Play className="w-3 h-3 mr-2 text-[#33E0FF]" />
@@ -390,7 +389,7 @@ export default function AkennaPage() {
           {!isInitialized ? (
             <Button 
               onClick={toggleAkenna}
-              className="rounded-full px-8 py-8 bg-transparent border-2 border-[#33E0FF] text-[#33E0FF] hover:bg-[#33E0FF]/10 group animate-in fade-in slide-in-from-bottom-4"
+              className="rounded-full px-12 py-8 bg-transparent border-2 border-[#33E0FF] text-[#33E0FF] hover:bg-[#33E0FF]/10 group animate-in fade-in slide-in-from-bottom-4 shadow-[0_0_30px_rgba(51,224,255,0.2)]"
             >
               <Power className="mr-3 w-6 h-6 group-hover:scale-110 transition-transform" />
               <span className="font-headline tracking-widest uppercase font-bold text-lg">Initialize Akenna</span>
@@ -401,7 +400,7 @@ export default function AkennaPage() {
                 variant="outline"
                 size="icon"
                 onClick={toggleAkenna}
-                className="rounded-full w-14 h-14 border-[#3377FF]/40 text-[#3377FF]/60 hover:text-[#3377FF] bg-transparent"
+                className="rounded-full w-14 h-14 border-[#3377FF]/40 text-[#3377FF]/60 hover:text-[#3377FF] bg-transparent hover:bg-[#3377FF]/5 shadow-lg"
               >
                 <MicOff className="w-6 h-6" />
               </Button>
@@ -419,7 +418,7 @@ export default function AkennaPage() {
               </div>
               <Button 
                 variant="outline" size="icon" onClick={() => window.location.reload()}
-                className="rounded-full w-10 h-10 border-white/10 text-white/20 hover:text-white bg-transparent"
+                className="rounded-full w-10 h-10 border-white/10 text-white/20 hover:text-white bg-transparent hover:bg-white/5"
               >
                 <RefreshCw className="w-4 h-4" />
               </Button>
