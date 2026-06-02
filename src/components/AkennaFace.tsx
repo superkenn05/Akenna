@@ -13,23 +13,23 @@ export const AkennaFace: React.FC<AkennaFaceProps> = ({ status, isSpeaking, volu
   return (
     <div className="flex flex-col items-center justify-center gap-24 relative face-container">
       {/* Eyes Container */}
-      <div className="flex gap-32 sm:gap-48 items-center justify-center">
+      <div className="flex gap-24 sm:gap-40 items-center justify-center">
         {/* Left Eye */}
         <div 
           className={cn(
-            "w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-[#33E0FF] glow-cyan transition-all duration-700 ease-out animate-eye-blink",
+            "w-24 h-24 sm:w-36 sm:h-36 rounded-full bg-[#33E0FF] glow-cyan transition-all duration-700 ease-out animate-eye-blink",
             status === 'listening' && "animate-pulse-cyan scale-110",
             status === 'processing' && "opacity-50 blur-sm",
-            status === 'speaking' && "scale-95 shadow-[#3377FF_0px_0px_30px]"
+            status === 'speaking' && "scale-95 shadow-[#3377FF_0px_0px_50px]"
           )}
         />
         {/* Right Eye */}
         <div 
           className={cn(
-            "w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-[#33E0FF] glow-cyan transition-all duration-700 ease-out animate-eye-blink",
+            "w-24 h-24 sm:w-36 sm:h-36 rounded-full bg-[#33E0FF] glow-cyan transition-all duration-700 ease-out animate-eye-blink",
             status === 'listening' && "animate-pulse-cyan scale-110",
             status === 'processing' && "opacity-50 blur-sm",
-            status === 'speaking' && "scale-95 shadow-[#3377FF_0px_0px_30px]"
+            status === 'speaking' && "scale-95 shadow-[#3377FF_0px_0px_50px]"
           )}
         />
       </div>
