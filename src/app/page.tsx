@@ -22,9 +22,8 @@ export default function AkennaPage() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   
   const micAnalyserRef = useRef<AnalyserNode | null>(null);
-  const micSourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
 
   const startMicAnalysis = useCallback(async () => {
     try {
@@ -39,8 +38,8 @@ export default function AkennaPage() {
         const source = audioContextRef.current.createMediaStreamSource(micStreamRef.current);
         const analyser = audioContextRef.current.createAnalyser();
         analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.4;
         source.connect(analyser);
-        micSourceNodeRef.current = source;
         micAnalyserRef.current = analyser;
       }
 
@@ -55,7 +54,8 @@ export default function AkennaPage() {
             sum += dataArray[i];
           }
           const average = sum / bufferLength;
-          setVolume(average / 128);
+          // Increased sensitivity: average / 64 instead of 128
+          setVolume(Math.min(1.5, average / 64)); 
           animationFrameRef.current = requestAnimationFrame(updateMicVolume);
         } else if (status !== 'speaking') {
           setVolume(0);
@@ -66,7 +66,7 @@ export default function AkennaPage() {
         updateMicVolume();
       }
     } catch (err) {
-      // Silent fail for mic analysis to avoid UI jitter
+      console.warn('Mic analysis failed:', err);
     }
   }, [status]);
 
@@ -75,17 +75,23 @@ export default function AkennaPage() {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
-      recognition.interimResults = false;
+      recognition.interimResults = true; // Changed to true for more reactive face
       recognition.lang = 'en-US';
 
       recognition.onstart = () => {
         setStatus('listening');
       };
 
-      recognition.onresult = async (event: any) => {
-        const transcript = event.results[event.results.length - 1][0].transcript.trim();
-        if (transcript) {
-          handleAkennaQuery(transcript);
+      recognition.onresult = (event: any) => {
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          }
+        }
+        
+        if (finalTranscript.trim()) {
+          handleAkennaQuery(finalTranscript.trim());
         }
       };
 
@@ -154,7 +160,7 @@ export default function AkennaPage() {
             sum += dataArray[i];
           }
           const average = sum / bufferLength;
-          setVolume(average / 128);
+          setVolume(average / 100); // Sensitive for output
           
           animationFrameRef.current = requestAnimationFrame(updateVolume);
         }
@@ -175,8 +181,11 @@ export default function AkennaPage() {
 
       await audioRef.current.play();
     } catch (err) {
-      setError("Audio playback error. Resetting Akenna.");
-      setStatus('idle');
+      console.error('Audio playback error:', err);
+      setStatus('listening');
+      if (recognitionRef.current) {
+        try { recognitionRef.current.start(); } catch(e) {}
+      }
     }
   };
 
@@ -187,13 +196,6 @@ export default function AkennaPage() {
         const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
         const ctx = new AudioContextClass();
         
-        ctx.onstatechange = () => {
-          if (ctx.state === 'closed') {
-            setIsInitialized(false);
-            setStatus('idle');
-          }
-        };
-
         if (ctx.state === 'suspended') {
           await ctx.resume();
         }
@@ -213,40 +215,39 @@ export default function AkennaPage() {
 
         setIsInitialized(true);
       } catch (err) {
+        console.error('Initialization error:', err);
         setError("Could not access audio device. Check permissions.");
       }
     } else {
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch(e) {}
-      }
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = "";
-      }
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach(track => track.stop());
-        micStreamRef.current = null;
-      }
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-      
-      if (audioContextRef.current) {
-        try {
-          await audioContextRef.current.close();
-        } catch (e) {}
-        audioContextRef.current = null;
-      }
-
-      sourceNodeRef.current = null;
-      analyserRef.current = null;
-      micAnalyserRef.current = null;
-      micSourceNodeRef.current = null;
-      
+      cleanup();
       setIsInitialized(false);
       setStatus('idle');
       setVolume(0);
     }
+  };
+
+  const cleanup = () => {
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch(e) {}
+      recognitionRef.current = null;
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+    }
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach(track => track.stop());
+      micStreamRef.current = null;
+    }
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    if (audioContextRef.current) {
+      try { audioContextRef.current.close(); } catch (e) {}
+      audioContextRef.current = null;
+    }
+    micAnalyserRef.current = null;
+    analyserRef.current = null;
   };
 
   useEffect(() => {
@@ -260,9 +261,6 @@ export default function AkennaPage() {
       }
     }
     return () => {
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch(e) {}
-      }
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
   }, [isInitialized, initSpeech, startMicAnalysis]);
@@ -305,7 +303,9 @@ export default function AkennaPage() {
               <MicOff className="w-6 h-6" />
             </Button>
             <div className="flex flex-col items-center">
-              <div className="text-[10px] text-[#33E0FF]/40 font-headline uppercase tracking-[0.4em] mb-2">Live Mode Active</div>
+              <div className="text-[10px] text-[#33E0FF]/40 font-headline uppercase tracking-[0.4em] mb-2">
+                {status === 'listening' ? 'Mic Active' : 'System Busy'}
+              </div>
               <div className="flex gap-1">
                 {[...Array(5)].map((_, i) => (
                   <div 
@@ -314,7 +314,10 @@ export default function AkennaPage() {
                       "w-1 h-3 rounded-full bg-[#33E0FF] transition-all duration-300",
                       status === 'listening' ? "animate-pulse" : "opacity-20"
                     )}
-                    style={{ animationDelay: `${i * 0.1}s` }}
+                    style={{ 
+                      animationDelay: `${i * 0.1}s`,
+                      height: status === 'listening' ? `${3 + volume * 15}px` : '3px'
+                    }}
                   />
                 ))}
               </div>
