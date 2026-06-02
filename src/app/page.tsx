@@ -23,13 +23,15 @@ export default function AkennaPage() {
   // Initialize Microphone analysis for user voice visualization
   const startMicAnalysis = useCallback(async () => {
     try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContext();
+      if (!audioContextRef.current) return;
+      
+      // If we already have a stream, don't request again
+      if (!micStreamRef.current) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        micStreamRef.current = stream;
       }
       
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      micStreamRef.current = stream;
-      const source = audioContextRef.current.createMediaStreamSource(stream);
+      const source = audioContextRef.current.createMediaStreamSource(micStreamRef.current);
       const analyser = audioContextRef.current.createAnalyser();
       analyser.fftSize = 256;
       source.connect(analyser);
@@ -105,7 +107,9 @@ export default function AkennaPage() {
   const handleAkennaQuery = async (text: string) => {
     if (status === 'processing' || status === 'speaking') return;
     
-    if (recognitionRef.current) recognitionRef.current.stop();
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch(e) {}
+    }
     if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     
     setVolume(0);
@@ -117,17 +121,18 @@ export default function AkennaPage() {
     } catch (error) {
       console.error('Akenna interaction error:', error);
       setStatus('listening');
-      if (recognitionRef.current) recognitionRef.current.start();
+      if (recognitionRef.current) {
+         try { recognitionRef.current.start(); } catch(e) {}
+      }
     }
   };
 
   const playResponse = (audioBase64: string) => {
+    if (!audioContextRef.current) return;
+
     setStatus('speaking');
     
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext();
-    }
-
+    // Ensure context is running - this is crucial before playing
     if (audioContextRef.current.state === 'suspended') {
       audioContextRef.current.resume();
     }
@@ -167,24 +172,48 @@ export default function AkennaPage() {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       setVolume(0);
       setStatus('listening');
-      if (recognitionRef.current) recognitionRef.current.start();
+      if (recognitionRef.current) {
+        try { recognitionRef.current.start(); } catch(e) {}
+      }
     };
 
-    audio.play();
+    audio.play().catch(err => {
+      console.error("Playback failed:", err);
+      setStatus('listening');
+      if (recognitionRef.current) {
+        try { recognitionRef.current.start(); } catch(e) {}
+      }
+    });
   };
 
-  const toggleAkenna = () => {
+  const toggleAkenna = async () => {
     if (!isInitialized) {
-      setIsInitialized(true);
-      if (audioContextRef.current?.state === 'suspended') {
-        audioContextRef.current.resume();
+      // 1. Initialize AudioContext on user gesture
+      if (!audioContextRef.current) {
+        const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+        audioContextRef.current = new AudioContextClass();
       }
+      
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
+
+      setIsInitialized(true);
     } else {
       setIsInitialized(false);
-      if (recognitionRef.current) recognitionRef.current.stop();
-      if (audioRef.current) audioRef.current.pause();
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch(e) {}
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach(track => track.stop());
+        micStreamRef.current = null;
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
       }
       setStatus('idle');
       setVolume(0);
@@ -202,7 +231,9 @@ export default function AkennaPage() {
       }
     }
     return () => {
-      if (recognitionRef.current) recognitionRef.current.stop();
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch(e) {}
+      }
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach(track => track.stop());
