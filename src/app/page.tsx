@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -9,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { MicOff, Power, RefreshCw, AlertCircle, Send, Terminal, MessageSquare, Volume2, VolumeX } from 'lucide-react';
+import { MicOff, Power, RefreshCw, AlertCircle, Send, Terminal, MessageSquare, Volume2, VolumeX, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type HistoryMessage = { role: 'user' | 'model'; text: string };
@@ -57,7 +56,6 @@ export default function AkennaPage() {
           micAnalyserRef.current.getByteFrequencyData(dataArray);
           let sum = 0;
           for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
-          // Scale volume for visual sensitivity
           const level = Math.min(1.5, (sum / bufferLength) / 40);
           setVolume(level);
           animationFrameRef.current = requestAnimationFrame(updateMicVolume);
@@ -67,14 +65,13 @@ export default function AkennaPage() {
       };
       if (status === 'listening') updateMicVolume();
     } catch (err) {
-      console.warn('[Akenna Mic] Analysis failed:', err);
+      // Silently fail mic analysis if permissions or hardware are missing
     }
   }, [status]);
 
   const handleAkennaQuery = async (text: string) => {
     if (status === 'processing' || status === 'speaking' || !text.trim()) return;
     
-    console.log('[Akenna System] Query:', text);
     setError(null);
     setAiTextResponse('');
     setUserTranscript(text);
@@ -94,8 +91,6 @@ export default function AkennaPage() {
         voiceEnabled 
       });
       
-      console.log('[Akenna System] Response received');
-
       if (response.text) {
         setAiTextResponse(response.text);
         setHistory(prev => [...prev, 
@@ -110,10 +105,8 @@ export default function AkennaPage() {
 
       if (voiceEnabled) {
         if (response.audio) {
-          console.log('[Akenna System] Playing Neural AI voice');
           playResponse(response.audio);
         } else if (response.text) {
-          console.log('[Akenna System] AI Quota reached. Falling back to Browser TTS.');
           playBrowserFallback(response.text);
         } else {
           setStatus('listening');
@@ -124,8 +117,7 @@ export default function AkennaPage() {
         setTimeout(() => restartRecognition(), 100);
       }
     } catch (err: any) {
-      console.error('[Akenna System] Interaction error:', err);
-      setError("Akenna is having trouble connecting.");
+      setError("Connection error. Please try again.");
       setStatus('listening');
       restartRecognition();
     }
@@ -136,7 +128,7 @@ export default function AkennaPage() {
       try { 
         recognitionRef.current.start(); 
       } catch (e) {
-        // Silently ignore if already started
+        // Recognition might already be running
       }
     }
   };
@@ -150,7 +142,6 @@ export default function AkennaPage() {
       recognition.lang = 'en-US';
 
       recognition.onstart = () => {
-        console.log('[Akenna Speech] Recognition service started.');
         setStatus('listening');
       };
 
@@ -167,10 +158,7 @@ export default function AkennaPage() {
       };
 
       recognition.onerror = (event: any) => {
-        if (event.error === 'aborted' || event.error === 'no-speech') {
-          return;
-        }
-        console.error('[Akenna Speech] Error:', event.error);
+        if (event.error === 'aborted' || event.error === 'no-speech') return;
         if (event.error === 'not-allowed') {
           setError("Microphone access denied.");
           setIsInitialized(false);
@@ -178,22 +166,19 @@ export default function AkennaPage() {
       };
 
       recognition.onend = () => {
-        console.log('[Akenna Speech] Recognition service ended.');
         if (isInitialized && status === 'listening') restartRecognition();
       };
 
       recognitionRef.current = recognition;
     } else {
-      setError("Speech recognition not supported in this browser.");
+      setError("Speech recognition not supported.");
     }
   }, [isInitialized, status, history, voiceEnabled]);
 
   const playBrowserFallback = (text: string) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     
-    // Stop any current speech
     window.speechSynthesis.cancel();
-    
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-US';
     utterance.rate = 1.0;
@@ -201,7 +186,6 @@ export default function AkennaPage() {
 
     utterance.onstart = () => {
       setStatus('speaking');
-      // Simulate volume for browser TTS since we don't have direct analyzer access easily
       const simulateVolume = () => {
         if (status === 'speaking') {
           setVolume(0.2 + Math.random() * 0.3);
@@ -233,7 +217,6 @@ export default function AkennaPage() {
       if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
       
       audioRef.current.src = audioBase64;
-      audioRef.current.volume = 1.0;
       
       const updateVolume = () => {
         if (analyserRef.current && status === 'speaking') {
@@ -249,7 +232,6 @@ export default function AkennaPage() {
 
       audioRef.current.onplay = () => updateVolume();
       audioRef.current.onended = () => {
-        console.log('[Akenna System] Audio playback ended.');
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         setVolume(0);
         setStatus('listening');
@@ -258,8 +240,6 @@ export default function AkennaPage() {
       
       await audioRef.current.play();
     } catch (err) {
-      console.error('[Akenna System] Playback error:', err);
-      // If neural playback fails, try browser fallback as a last resort
       if (aiTextResponse) playBrowserFallback(aiTextResponse);
       else {
         setStatus('listening');
@@ -280,7 +260,6 @@ export default function AkennaPage() {
         const ctx = new AudioContextClass();
         const audio = new Audio();
         
-        // Single persistent source to avoid AudioContext renderer limit errors
         const source = ctx.createMediaElementSource(audio);
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 256;
@@ -291,10 +270,8 @@ export default function AkennaPage() {
         audioRef.current = audio;
         analyserRef.current = analyser;
         setIsInitialized(true);
-        console.log('[Akenna System] Initialized successfully.');
       } catch (err) {
-        console.error('[Akenna System] Initialization error:', err);
-        setError("Audio system failed. Please refresh the page.");
+        setError("Audio system failed. Please refresh.");
       }
     } else {
       cleanup();
@@ -362,7 +339,7 @@ export default function AkennaPage() {
             <div className="flex items-center gap-3">
               {voiceEnabled ? <Volume2 className="w-4 h-4 text-[#33E0FF]" /> : <VolumeX className="w-4 h-4 text-white/40" />}
               <Switch checked={voiceEnabled} onCheckedChange={setVoiceEnabled} />
-              <Label className="text-[10px] uppercase tracking-wider text-white/60">Voice Response</Label>
+              <Label className="text-[10px] uppercase tracking-wider text-white/60">Voice</Label>
             </div>
             <Separator orientation="vertical" className="h-6 bg-white/10" />
             <Button 
@@ -377,7 +354,7 @@ export default function AkennaPage() {
         )}
 
         {isInitialized && showDiagnostics && (
-          <div className="w-full bg-white/5 border border-white/10 rounded-xl p-4 mb-2 backdrop-blur-md animate-in fade-in zoom-in-95 pointer-events-auto">
+          <div className="w-full bg-white/5 border border-white/10 rounded-xl p-4 mb-2 backdrop-blur-md animate-in fade-in zoom-in-95 pointer-events-auto flex flex-col gap-3">
             <div className="flex gap-2">
               <Input 
                 value={testInput}
@@ -390,6 +367,14 @@ export default function AkennaPage() {
                 <Send className="w-4 h-4" />
               </Button>
             </div>
+            <Button 
+              variant="outline" 
+              onClick={() => handleAkennaQuery("Test voice activation. Hello, I am Akenna.")}
+              className="w-full text-[10px] uppercase tracking-widest border-white/10 bg-white/5 h-8 hover:bg-[#33E0FF]/20"
+            >
+              <Play className="w-3 h-3 mr-2 text-[#33E0FF]" />
+              Quick Voice Test
+            </Button>
           </div>
         )}
 
