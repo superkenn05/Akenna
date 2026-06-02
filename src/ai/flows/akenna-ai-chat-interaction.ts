@@ -63,7 +63,10 @@ const akennaChatPrompt = ai.definePrompt({
   name: 'akennaChatPrompt',
   input: { schema: AkennaAIChatInteractionInputSchema },
   output: { schema: z.object({ text: z.string().describe('The AI\'s text response.') }) },
-  prompt: `You are Akenna AI, a helpful, intelligent, and engaging AI assistant. \n  Respond naturally and contextually to the user's query.\n  \n  User query: {{{text}}} `,
+  prompt: `You are Akenna AI, a helpful, intelligent, and engaging AI assistant. 
+  Respond naturally and contextually to the user's query. Keep responses concise for voice interaction.
+  
+  User query: {{{text}}} `,
 });
 
 // Define the main Genkit flow for Akenna AI chat interaction
@@ -75,39 +78,56 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
   },
   async (input) => {
     // 1. Generate text response from the LLM
-    const { output: llmResponse } = await akennaChatPrompt(input);
+    let llmResponse;
+    try {
+      const { output } = await akennaChatPrompt(input);
+      llmResponse = output;
+    } catch (err: any) {
+      if (err.message?.includes('429') || err.message?.includes('quota')) {
+        throw new Error('Neural capacity reached. Please wait a moment before trying again.');
+      }
+      throw err;
+    }
+
     if (!llmResponse?.text) {
       throw new Error('Failed to generate text response from LLM.');
     }
 
     // 2. Convert the text response to speech using TTS model
-    const { media } = await ai.generate({
-      model: googleAI.model('gemini-2.5-flash-preview-tts'),
-      config: {
-        responseModalities: ['AUDIO'],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Algenib' }, // Using a default voice name
+    try {
+      const { media } = await ai.generate({
+        model: googleAI.model('gemini-2.5-flash-preview-tts'),
+        config: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Algenib' },
+            },
           },
         },
-      },
-      prompt: llmResponse.text,
-    });
+        prompt: llmResponse.text,
+      });
 
-    if (!media) {
-      throw new Error('No audio media returned from TTS model.');
+      if (!media) {
+        throw new Error('No audio media returned from TTS model.');
+      }
+
+      // 3. Convert the returned PCM audio to WAV format
+      const audioBuffer = Buffer.from(
+        media.url.substring(media.url.indexOf(',') + 1), // Extract base64 data
+        'base64'
+      );
+      const wavAudioBase64 = await toWav(audioBuffer);
+
+      return {
+        audio: 'data:audio/wav;base64,' + wavAudioBase64,
+      };
+    } catch (err: any) {
+      if (err.message?.includes('429') || err.message?.includes('quota')) {
+        throw new Error('Vocal synthesizer is cooling down (Rate limit). Please wait 30 seconds.');
+      }
+      throw err;
     }
-
-    // 3. Convert the returned PCM audio to WAV format
-    const audioBuffer = Buffer.from(
-      media.url.substring(media.url.indexOf(',') + 1), // Extract base64 data
-      'base64'
-    );
-    const wavAudioBase64 = await toWav(audioBuffer);
-
-    return {
-      audio: 'data:audio/wav;base64,' + wavAudioBase64,
-    };
   }
 );
 
