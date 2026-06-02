@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -64,7 +63,7 @@ export default function AkennaPage() {
         updateMicVolume();
       }
     } catch (err) {
-      console.error("Error accessing microphone for animation:", err);
+      // Silence internal mic errors to avoid disrupting user experience
     }
   }, [status]);
 
@@ -89,7 +88,11 @@ export default function AkennaPage() {
       };
 
       recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
+        // "aborted" and "no-speech" are common and non-fatal, silence them to prevent overlays
+        if (event.error === 'aborted' || event.error === 'no-speech') {
+          return;
+        }
+
         if (event.error === 'not-allowed') {
           setError("Microphone access denied.");
           setIsInitialized(false);
@@ -124,8 +127,7 @@ export default function AkennaPage() {
     try {
       const response = await akennaAIChatInteraction({ text });
       playResponse(response.audio);
-    } catch (error) {
-      console.error('Akenna interaction error:', error);
+    } catch (err) {
       setStatus('listening');
       if (recognitionRef.current) {
          try { recognitionRef.current.start(); } catch(e) {}
@@ -178,7 +180,6 @@ export default function AkennaPage() {
 
       await audioRef.current.play();
     } catch (err) {
-      console.error("Playback failed:", err);
       setError("Audio playback error. Please try again.");
       setStatus('listening');
       if (recognitionRef.current) {
@@ -212,7 +213,6 @@ export default function AkennaPage() {
 
         setIsInitialized(true);
       } catch (err) {
-        console.error("Initialization failed:", err);
         setError("Failed to initialize audio system.");
       }
     } else {
@@ -307,17 +307,15 @@ export default function AkennaPage() {
                 ))}
               </div>
             </div>
-            {error && (
-               <Button 
+            <Button 
                variant="outline"
                size="icon"
                onClick={() => window.location.reload()}
-               className="rounded-full w-14 h-14 border-destructive/40 text-destructive/60 hover:text-destructive hover:border-destructive transition-all bg-transparent ml-2"
+               className="rounded-full w-14 h-14 border-white/10 text-white/20 hover:text-white hover:border-white transition-all bg-transparent ml-2"
                title="Hard Reset"
              >
                <RefreshCw className="w-6 h-6" />
              </Button>
-            )}
           </div>
         )}
       </div>
