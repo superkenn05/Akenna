@@ -65,7 +65,7 @@ export default function AkennaPage() {
       };
       if (status === 'listening') updateMicVolume();
     } catch (err) {
-      // Silently fail mic analysis if permissions or hardware are missing
+      console.warn("[Akenna System] Mic analysis unavailable:", err);
     }
   }, [status]);
 
@@ -76,6 +76,7 @@ export default function AkennaPage() {
     setAiTextResponse('');
     setUserTranscript(text);
 
+    // Stop recognition while processing to avoid overlap
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch(e) {}
     }
@@ -101,6 +102,7 @@ export default function AkennaPage() {
 
       if (response.error) {
         setError(response.error);
+        // If it's a quota error on voice, we still have text response to show
       }
 
       if (voiceEnabled) {
@@ -117,7 +119,7 @@ export default function AkennaPage() {
         setTimeout(() => restartRecognition(), 100);
       }
     } catch (err: any) {
-      setError("Connection error. Please try again.");
+      setError("Communication array offline. Please wait or refresh.");
       setStatus('listening');
       restartRecognition();
     }
@@ -160,7 +162,7 @@ export default function AkennaPage() {
       recognition.onerror = (event: any) => {
         if (event.error === 'aborted' || event.error === 'no-speech') return;
         if (event.error === 'not-allowed') {
-          setError("Microphone access denied.");
+          setError("Microphone access denied by browser.");
           setIsInitialized(false);
         }
       };
@@ -171,7 +173,7 @@ export default function AkennaPage() {
 
       recognitionRef.current = recognition;
     } else {
-      setError("Speech recognition not supported.");
+      setError("Speech recognition engine not supported on this platform.");
     }
   }, [isInitialized, status, history, voiceEnabled]);
 
@@ -271,7 +273,7 @@ export default function AkennaPage() {
         analyserRef.current = analyser;
         setIsInitialized(true);
       } catch (err) {
-        setError("Audio system failed. Please refresh.");
+        setError("Audio system initialization failed. Please refresh.");
       }
     } else {
       cleanup();
@@ -369,7 +371,7 @@ export default function AkennaPage() {
             </div>
             <Button 
               variant="outline" 
-              onClick={() => handleAkennaQuery("Test voice activation. Hello, I am Akenna.")}
+              onClick={() => handleAkennaQuery("Neural system online. How can I assist you?")}
               className="w-full text-[10px] uppercase tracking-widest border-white/10 bg-white/5 h-8 hover:bg-[#33E0FF]/20"
             >
               <Play className="w-3 h-3 mr-2 text-[#33E0FF]" />

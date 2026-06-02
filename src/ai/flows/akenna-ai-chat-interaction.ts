@@ -19,7 +19,7 @@ const MessageSchema = z.object({
 // Define the input schema for the chat interaction
 const AkennaAIChatInteractionInputSchema = z.object({
   text: z.string().describe("The user's transcribed speech query."),
-  history: z.array(MessageSchema).optional().describe("Previous messages in the conversation."),
+  history: z.array(MessageSchema).optional().default([]).describe("Previous messages in the conversation."),
   voiceEnabled: z.boolean().optional().default(true).describe("Whether to generate audio response."),
 });
 export type AkennaAIChatInteractionInput = z.infer<typeof AkennaAIChatInteractionInputSchema>;
@@ -34,6 +34,7 @@ const AkennaAIChatInteractionOutputSchema = z.object({
       "The AI's spoken response as an audio data URI (WAV format)."
     ),
   error: z.string().optional().describe("A user-friendly error message if the interaction fails."),
+  isQuotaError: z.boolean().optional().describe("Whether the error is specifically a rate limit/quota issue."),
 });
 export type AkennaAIChatInteractionOutput = z.infer<typeof AkennaAIChatInteractionOutputSchema>;
 
@@ -98,7 +99,10 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
         llmResponse = output;
       } catch (err: any) {
         if (err.message?.includes('429') || err.message?.includes('quota')) {
-          return { error: 'Neural capacity reached. Please wait a moment.' };
+          return { 
+            error: 'Neural capacity reached (Text Limit). Please wait 15-30 seconds.',
+            isQuotaError: true 
+          };
         }
         return { error: 'Akenna is having trouble thinking right now.' };
       }
@@ -130,7 +134,7 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
         });
 
         if (!media) {
-          return { text: textResponse, error: 'Vocal synthesis unavailable.' };
+          return { text: textResponse, error: 'Vocal synthesis module returned no data.' };
         }
 
         const audioBuffer = Buffer.from(
@@ -147,13 +151,14 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
         if (err.message?.includes('429') || err.message?.includes('quota')) {
           return { 
             text: textResponse, 
-            error: 'Vocal synthesizer is cooling down. I will respond via text for now.' 
+            error: 'Vocal synthesizer is cooling down (Voice Limit). I will respond via text for now.',
+            isQuotaError: true
           };
         }
         return { text: textResponse, error: 'Vocal module inactive.' };
       }
     } catch (globalErr: any) {
-      return { error: 'A critical system error occurred.' };
+      return { error: 'A critical system error occurred in the AI core.' };
     }
   }
 );
