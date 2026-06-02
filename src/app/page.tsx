@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 type HistoryMessage = { role: 'user' | 'model'; text: string };
 
 export default function AkennaPage() {
-  const [status, setStatus] = useState<'idle' | 'listening' | 'processing' | 'speaking'>('idle');
+  const [status, setStatus] = useState<'idle' | 'listening' | 'processing' | 'speaking' | 'error'>('idle');
   const [isInitialized, setIsInitialized] = useState(false);
   const [volume, setVolume] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +58,7 @@ export default function AkennaPage() {
           const level = Math.min(1.5, (sum / bufferLength) / 40);
           setVolume(level);
           animationFrameRef.current = requestAnimationFrame(updateMicVolume);
-        } else if (status !== 'speaking') {
+        } else if (status !== 'speaking' && status !== 'processing') {
           setVolume(0);
         }
       };
@@ -98,6 +98,8 @@ export default function AkennaPage() {
 
       if (response.error) {
         setError(response.error);
+        setStatus('error');
+        setTimeout(() => setStatus('listening'), 3000);
       }
 
       if (voiceEnabled) {
@@ -115,13 +117,16 @@ export default function AkennaPage() {
       }
     } catch (err: any) {
       setError("Communication array offline. Please wait or refresh.");
-      setStatus('listening');
-      restartRecognition();
+      setStatus('error');
+      setTimeout(() => {
+        setStatus('listening');
+        restartRecognition();
+      }, 3000);
     }
   };
 
   const restartRecognition = () => {
-    if (recognitionRef.current && isInitialized && status !== 'processing' && status !== 'speaking') {
+    if (recognitionRef.current && isInitialized && status !== 'processing' && status !== 'speaking' && status !== 'error') {
       try { 
         recognitionRef.current.start(); 
       } catch (e) {}
@@ -137,7 +142,9 @@ export default function AkennaPage() {
       recognition.lang = 'en-US';
 
       recognition.onstart = () => {
-        setStatus('listening');
+        if (status !== 'processing' && status !== 'speaking' && status !== 'error') {
+          setStatus('listening');
+        }
       };
 
       recognition.onresult = (event: any) => {
@@ -184,7 +191,7 @@ export default function AkennaPage() {
       setStatus('speaking');
       const simulateVolume = () => {
         if (status === 'speaking') {
-          setVolume(0.2 + Math.random() * 0.3);
+          setVolume(0.2 + Math.random() * 0.4);
           animationFrameRef.current = requestAnimationFrame(simulateVolume);
         }
       };
@@ -221,7 +228,7 @@ export default function AkennaPage() {
           analyserRef.current.getByteFrequencyData(dataArray);
           let sum = 0;
           for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
-          setVolume((sum / bufferLength) / 80); 
+          setVolume((sum / bufferLength) / 60); 
           animationFrameRef.current = requestAnimationFrame(updateVolume);
         }
       };
@@ -266,6 +273,7 @@ export default function AkennaPage() {
         setStatus('listening');
       } catch (err) {
         setError("Audio system initialization failed.");
+        setStatus('error');
       }
     } else {
       cleanup();
@@ -363,11 +371,11 @@ export default function AkennaPage() {
               </div>
               <Button 
                 variant="outline" 
-                onClick={() => playBrowserFallback("System voice test active. All modules are within normal parameters.")}
+                onClick={() => playBrowserFallback("System voice test active. All moods and expressions are within normal parameters.")}
                 className="w-full text-[10px] uppercase tracking-widest border-white/10 bg-white/5 h-8 hover:bg-[#33E0FF]/20"
               >
                 <Play className="w-3 h-3 mr-2 text-[#33E0FF]" />
-                Quick Voice Test
+                Mood Test
               </Button>
             </div>
           )}
@@ -378,7 +386,7 @@ export default function AkennaPage() {
               className="rounded-full px-12 py-8 bg-transparent border-2 border-[#33E0FF] text-[#33E0FF] hover:bg-[#33E0FF]/10 group animate-in fade-in slide-in-from-bottom-4 shadow-[0_0_30px_rgba(51,224,255,0.2)]"
             >
               <Power className="mr-3 w-6 h-6 group-hover:scale-110 transition-transform" />
-              <span className="font-headline tracking-widest uppercase font-bold text-lg">Initialize Akenna</span>
+              <span className="font-headline tracking-widest uppercase font-bold text-lg">Wake Core</span>
             </Button>
           ) : (
             <div className="flex items-center gap-4 animate-in zoom-in-95 duration-500">
@@ -396,8 +404,8 @@ export default function AkennaPage() {
                 </div>
                 <div className="flex gap-1">
                   {[...Array(5)].map((_, i) => (
-                    <div key={i} className={cn("w-1 h-3 rounded-full bg-[#33E0FF] transition-all", status === 'listening' || status === 'processing' ? "animate-pulse" : "opacity-20")}
-                      style={{ animationDelay: `${i * 0.1}s`, height: status === 'listening' ? `${3 + volume * 25}px` : '3px' }}
+                    <div key={i} className={cn("w-1 h-3 rounded-full bg-[#33E0FF] transition-all", (status === 'listening' || status === 'processing' || status === 'speaking') ? "animate-pulse" : "opacity-20")}
+                      style={{ animationDelay: `${i * 0.1}s`, height: status === 'listening' ? `${3 + volume * 25}px` : status === 'speaking' ? `${3 + volume * 20}px` : '3px' }}
                     />
                   ))}
                 </div>
