@@ -26,7 +26,6 @@ export default function AkennaPage() {
   const animationFrameRef = useRef<number | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
 
-  // Initialize Microphone analysis for user voice visualization
   const startMicAnalysis = useCallback(async () => {
     try {
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') return;
@@ -36,8 +35,7 @@ export default function AkennaPage() {
         micStreamRef.current = stream;
       }
       
-      // Ensure we don't double-connect
-      if (!micAnalyserRef.current) {
+      if (!micAnalyserRef.current && audioContextRef.current) {
         const source = audioContextRef.current.createMediaStreamSource(micStreamRef.current);
         const analyser = audioContextRef.current.createAnalyser();
         analyser.fftSize = 256;
@@ -68,11 +66,10 @@ export default function AkennaPage() {
         updateMicVolume();
       }
     } catch (err) {
-      console.warn("Microphone analysis initialization failed:", err);
+      // Silent fail for mic analysis to avoid UI jitter
     }
   }, [status]);
 
-  // Initialize Speech Recognition
   const initSpeech = useCallback(() => {
     if (typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -190,7 +187,6 @@ export default function AkennaPage() {
         const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
         const ctx = new AudioContextClass();
         
-        // Handle state changes (e.g. interruption)
         ctx.onstatechange = () => {
           if (ctx.state === 'closed') {
             setIsInitialized(false);
@@ -204,7 +200,6 @@ export default function AkennaPage() {
 
         audioContextRef.current = ctx;
 
-        // Initialize audio pipeline
         const audio = new Audio();
         const source = ctx.createMediaElementSource(audio);
         const analyser = ctx.createAnalyser();
@@ -218,11 +213,9 @@ export default function AkennaPage() {
 
         setIsInitialized(true);
       } catch (err) {
-        console.error("Audio init error:", err);
         setError("Could not access audio device. Check permissions.");
       }
     } else {
-      // Full Cleanup to prevent renderer errors
       if (recognitionRef.current) {
         try { recognitionRef.current.stop(); } catch(e) {}
       }
@@ -238,7 +231,6 @@ export default function AkennaPage() {
         cancelAnimationFrame(animationFrameRef.current);
       }
       
-      // Close context to free hardware resources
       if (audioContextRef.current) {
         try {
           await audioContextRef.current.close();
@@ -246,7 +238,6 @@ export default function AkennaPage() {
         audioContextRef.current = null;
       }
 
-      // Reset all internal refs
       sourceNodeRef.current = null;
       analyserRef.current = null;
       micAnalyserRef.current = null;
