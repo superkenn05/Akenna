@@ -1,12 +1,8 @@
 'use server';
 /**
  * @fileOverview This file defines the Genkit flow for Akenna AI's chat interaction.
- * It takes a user's transcribed speech query, generates a natural language response
- * using an LLM, and then synthesizes that response into a spoken audio format.
- *
- * - akennaAIChatInteraction - The main function to interact with Akenna AI.
- * - AkennaAIChatInteractionInput - The input type for the chat interaction.
- * - AkennaAIChatInteractionOutput - The return type for the chat interaction.
+ * It supports conversation history to allow contextual dialogue and provides
+ * optional audio synthesis to manage API quotas.
  */
 
 import { ai } from '@/ai/genkit';
@@ -14,9 +10,17 @@ import { z } from 'genkit';
 import * as wav from 'wav';
 import { googleAI } from '@genkit-ai/google-genai';
 
+// Define the message schema for history
+const MessageSchema = z.object({
+  role: z.enum(['user', 'model']),
+  text: z.string(),
+});
+
 // Define the input schema for the chat interaction
 const AkennaAIChatInteractionInputSchema = z.object({
   text: z.string().describe("The user's transcribed speech query."),
+  history: z.array(MessageSchema).optional().describe("Previous messages in the conversation."),
+  voiceEnabled: z.boolean().optional().default(true).describe("Whether to generate audio response."),
 });
 export type AkennaAIChatInteractionInput = z.infer<typeof AkennaAIChatInteractionInputSchema>;
 
@@ -61,7 +65,7 @@ async function toWav(
   });
 }
 
-// Define the prompt for generating the text response
+// Define the prompt for generating the text response with history support
 const akennaChatPrompt = ai.definePrompt({
   name: 'akennaChatPrompt',
   input: { schema: AkennaAIChatInteractionInputSchema },
@@ -69,6 +73,11 @@ const akennaChatPrompt = ai.definePrompt({
   prompt: `You are Akenna AI, a helpful, intelligent, and engaging AI assistant. 
   Respond naturally and contextually to the user's query. Keep responses concise for voice interaction.
   If the user speaks in Tagalog, respond in a mix of Tagalog and English (Taglish) to be more conversational.
+
+  Conversation History:
+  {{#each history}}
+  {{role}}: {{{text}}}
+  {{/each}}
   
   User query: {{{text}}} `,
 });
@@ -91,7 +100,6 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
         if (err.message?.includes('429') || err.message?.includes('quota')) {
           return { error: 'Neural capacity reached. Please wait a moment.' };
         }
-        console.error('[Flow] LLM Error:', err);
         return { error: 'Akenna is having trouble thinking right now.' };
       }
 
@@ -101,7 +109,12 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
 
       const textResponse = llmResponse.text;
 
-      // 2. Convert the text response to speech using TTS model
+      // 2. Skip audio if disabled
+      if (input.voiceEnabled === false) {
+        return { text: textResponse };
+      }
+
+      // 3. Convert the text response to speech using TTS model
       try {
         const { media } = await ai.generate({
           model: googleAI.model('gemini-2.5-flash-preview-tts'),
@@ -117,7 +130,7 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
         });
 
         if (!media) {
-          return { text: textResponse, error: 'Vocal synthesis failed, but here is my response.' };
+          return { text: textResponse, error: 'Vocal synthesis unavailable.' };
         }
 
         const audioBuffer = Buffer.from(
@@ -137,10 +150,9 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
             error: 'Vocal synthesizer is cooling down. I will respond via text for now.' 
           };
         }
-        return { text: textResponse, error: 'I am currently mute, but here is my response.' };
+        return { text: textResponse, error: 'Vocal module inactive.' };
       }
     } catch (globalErr: any) {
-      console.error('[Flow Error]:', globalErr);
       return { error: 'A critical system error occurred.' };
     }
   }

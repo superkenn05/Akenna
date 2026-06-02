@@ -5,8 +5,12 @@ import { AkennaFace } from '@/components/AkennaFace';
 import { akennaAIChatInteraction } from '@/ai/flows/akenna-ai-chat-interaction';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { MicOff, Power, RefreshCw, AlertCircle, Send, Terminal, MessageSquare } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { MicOff, Power, RefreshCw, AlertCircle, Send, Terminal, MessageSquare, Volume2, VolumeX } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+type HistoryMessage = { role: 'user' | 'model'; text: string };
 
 export default function AkennaPage() {
   const [status, setStatus] = useState<'idle' | 'listening' | 'processing' | 'speaking'>('idle');
@@ -15,38 +19,31 @@ export default function AkennaPage() {
   const [error, setError] = useState<string | null>(null);
   const [testInput, setTestInput] = useState('');
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   
   // Dialogue states
   const [userTranscript, setUserTranscript] = useState('');
   const [aiTextResponse, setAiTextResponse] = useState('');
+  const [history, setHistory] = useState<HistoryMessage[]>([]);
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const recognitionRef = useRef<any>(null);
-  
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const micAnalyserRef = useRef<AnalyserNode | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    console.log(`[Akenna System] Status updated: ${status}`);
-  }, [status]);
-
   const startMicAnalysis = useCallback(async () => {
     try {
       if (!audioContextRef.current) return;
-      
       if (!micStreamRef.current) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        micStreamRef.current = stream;
+        micStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
-      
-      if (!micAnalyserRef.current && audioContextRef.current) {
+      if (!micAnalyserRef.current) {
         const source = audioContextRef.current.createMediaStreamSource(micStreamRef.current!);
         const analyser = audioContextRef.current.createAnalyser();
         analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.4;
         source.connect(analyser);
         micAnalyserRef.current = analyser;
       }
@@ -56,22 +53,15 @@ export default function AkennaPage() {
           const bufferLength = micAnalyserRef.current.frequencyBinCount;
           const dataArray = new Uint8Array(bufferLength);
           micAnalyserRef.current.getByteFrequencyData(dataArray);
-          
           let sum = 0;
-          for (let i = 0; i < bufferLength; i++) {
-            sum += dataArray[i];
-          }
-          const average = sum / bufferLength;
-          setVolume(Math.min(1.5, average / 40));
+          for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
+          setVolume(Math.min(1.5, (sum / bufferLength) / 40));
           animationFrameRef.current = requestAnimationFrame(updateMicVolume);
         } else if (status !== 'speaking') {
           setVolume(0);
         }
       };
-      
-      if (status === 'listening') {
-        updateMicVolume();
-      }
+      if (status === 'listening') updateMicVolume();
     } catch (err) {
       console.warn('[Akenna Mic] Analysis failed:', err);
     }
@@ -93,40 +83,39 @@ export default function AkennaPage() {
     setStatus('processing');
     
     try {
-      const response = await akennaAIChatInteraction({ text });
+      const response = await akennaAIChatInteraction({ 
+        text, 
+        history: history.slice(-6), // Send last 3 turns
+        voiceEnabled 
+      });
       
       if (response.text) {
         setAiTextResponse(response.text);
+        setHistory(prev => [...prev, 
+          { role: 'user', text }, 
+          { role: 'model', text: response.text! }
+        ]);
       }
 
       if (response.error) {
         setError(response.error);
-        if (!response.audio) {
-          setStatus('listening');
-          restartRecognition();
-          return;
-        }
       }
 
-      if (response.audio) {
+      if (response.audio && voiceEnabled) {
         playResponse(response.audio);
-      } else if (response.text) {
-        // Fallback for when TTS fails but we have text
-        setStatus('listening');
-        restartRecognition();
       } else {
-        throw new Error("Received no data from Akenna.");
+        setStatus('listening');
+        setTimeout(() => restartRecognition(), 100);
       }
     } catch (err: any) {
-      console.error('[Akenna System] Interaction error:', err);
-      setError(err.message || "AI failed to respond. Check connection.");
+      setError("AI failed to respond. Check connection.");
       setStatus('listening');
       restartRecognition();
     }
   };
 
   const restartRecognition = () => {
-    if (recognitionRef.current && isInitialized) {
+    if (recognitionRef.current && isInitialized && status !== 'processing' && status !== 'speaking') {
       try { recognitionRef.current.start(); } catch (e) {}
     }
   };
@@ -135,29 +124,21 @@ export default function AkennaPage() {
     if (typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const recognition = new SpeechRecognition();
-      recognition.continuous = false; // Set to false to handle results segmentally
+      recognition.continuous = false;
       recognition.interimResults = true;
       recognition.lang = 'en-US';
 
-      recognition.onstart = () => {
-        setStatus('listening');
-        console.log('[Akenna Speech] Recognition service started.');
-      };
-
+      recognition.onstart = () => setStatus('listening');
       recognition.onresult = (event: any) => {
         let interimTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
-            const final = event.results[i][0].transcript;
-            console.log('[Akenna Speech] Transcribed:', final.trim());
-            handleAkennaQuery(final.trim());
+            handleAkennaQuery(event.results[i][0].transcript.trim());
           } else {
             interimTranscript += event.results[i][0].transcript;
           }
         }
-        if (interimTranscript) {
-          setUserTranscript(interimTranscript);
-        }
+        if (interimTranscript) setUserTranscript(interimTranscript);
       };
 
       recognition.onerror = (event: any) => {
@@ -165,36 +146,27 @@ export default function AkennaPage() {
           if (status === 'listening') restartRecognition();
           return;
         }
-        console.error('[Akenna Speech] Error:', event.error);
         if (event.error === 'not-allowed') {
-          setError("Microphone permission denied.");
+          setError("Microphone access denied.");
           setIsInitialized(false);
         }
       };
 
       recognition.onend = () => {
-        console.log('[Akenna Speech] Recognition service ended.');
-        if (isInitialized && status === 'listening') {
-          restartRecognition();
-        }
+        if (isInitialized && status === 'listening') restartRecognition();
       };
 
       recognitionRef.current = recognition;
     } else {
-      setError("Speech recognition not supported in this browser.");
+      setError("Speech recognition not supported.");
     }
-  }, [isInitialized, status]);
+  }, [isInitialized, status, history, voiceEnabled]);
 
   const playResponse = async (audioBase64: string) => {
     if (!audioContextRef.current || !audioRef.current) return;
-
     try {
       setStatus('speaking');
-      
-      if (audioContextRef.current.state === 'suspended') {
-        await audioContextRef.current.resume();
-      }
-
+      if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
       audioRef.current.src = audioBase64;
       
       const updateVolume = () => {
@@ -202,30 +174,22 @@ export default function AkennaPage() {
           const bufferLength = analyserRef.current.frequencyBinCount;
           const dataArray = new Uint8Array(bufferLength);
           analyserRef.current.getByteFrequencyData(dataArray);
-          
           let sum = 0;
-          for (let i = 0; i < bufferLength; i++) {
-            sum += dataArray[i];
-          }
-          const average = sum / bufferLength;
-          setVolume(average / 80); 
-          
+          for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
+          setVolume((sum / bufferLength) / 80); 
           animationFrameRef.current = requestAnimationFrame(updateVolume);
         }
       };
 
       audioRef.current.onplay = () => updateVolume();
-
       audioRef.current.onended = () => {
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         setVolume(0);
         setStatus('listening');
         restartRecognition();
       };
-
       await audioRef.current.play();
     } catch (err) {
-      console.error('[Akenna Audio] Playback failed:', err);
       setStatus('listening');
       restartRecognition();
     }
@@ -235,16 +199,12 @@ export default function AkennaPage() {
     setError(null);
     setAiTextResponse('');
     setUserTranscript('');
+    setHistory([]);
     
     if (!isInitialized) {
       try {
         const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
         const ctx = new AudioContextClass();
-        
-        if (ctx.state === 'suspended') {
-          await ctx.resume();
-        }
-
         const audio = new Audio();
         const source = ctx.createMediaElementSource(audio);
         const analyser = ctx.createAnalyser();
@@ -255,11 +215,9 @@ export default function AkennaPage() {
         audioContextRef.current = ctx;
         audioRef.current = audio;
         analyserRef.current = analyser;
-
         setIsInitialized(true);
       } catch (err) {
-        console.error('[Akenna System] Initialization error:', err);
-        setError("Audio system failed to start. Refresh the page.");
+        setError("Audio system failed to start.");
       }
     } else {
       cleanup();
@@ -270,27 +228,11 @@ export default function AkennaPage() {
   };
 
   const cleanup = () => {
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch(e) {}
-      recognitionRef.current = null;
-    }
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = "";
-    }
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach(track => track.stop());
-      micStreamRef.current = null;
-    }
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      try { audioContextRef.current.close(); } catch (e) {}
-      audioContextRef.current = null;
-    }
-    micAnalyserRef.current = null;
-    analyserRef.current = null;
+    if (recognitionRef.current) try { recognitionRef.current.stop(); } catch(e) {}
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
+    if (micStreamRef.current) { micStreamRef.current.getTracks().forEach(t => t.stop()); micStreamRef.current = null; }
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
   };
 
   useEffect(() => {
@@ -299,9 +241,7 @@ export default function AkennaPage() {
       startMicAnalysis();
       restartRecognition();
     }
-    return () => {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-    };
+    return () => { if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current); };
   }, [isInitialized, initSpeech, startMicAnalysis]);
 
   return (
@@ -328,11 +268,7 @@ export default function AkennaPage() {
       )}
 
       <div className="flex-1 flex items-center justify-center w-full">
-        <AkennaFace 
-          status={status} 
-          isSpeaking={status === 'speaking'} 
-          volume={volume}
-        />
+        <AkennaFace status={status} isSpeaking={status === 'speaking'} volume={volume} />
       </div>
 
       <div className="fixed bottom-12 z-30 flex flex-col items-center gap-6 w-full max-w-md px-4">
@@ -343,28 +279,36 @@ export default function AkennaPage() {
           </div>
         )}
 
-        {isInitialized && showDiagnostics && (
-          <div className="w-full bg-white/5 border border-white/10 rounded-xl p-4 mb-4 backdrop-blur-md animate-in fade-in zoom-in-95 pointer-events-auto">
-            <div className="flex items-center gap-2 mb-3 text-[10px] text-[#33E0FF] uppercase tracking-widest font-bold">
-              <Terminal className="w-3 h-3" />
-              Manual Diagnostic Input
+        {isInitialized && (
+          <div className="flex items-center gap-6 bg-white/5 px-6 py-3 rounded-full border border-white/10 backdrop-blur-sm pointer-events-auto">
+            <div className="flex items-center gap-3">
+              {voiceEnabled ? <Volume2 className="w-4 h-4 text-[#33E0FF]" /> : <VolumeX className="w-4 h-4 text-white/40" />}
+              <Switch checked={voiceEnabled} onCheckedChange={setVoiceEnabled} />
+              <Label className="text-[10px] uppercase tracking-wider text-white/60">Voice Response</Label>
             </div>
+            <Separator orientation="vertical" className="h-6 bg-white/10" />
+            <Button 
+               variant="ghost" 
+               size="icon" 
+               onClick={() => setShowDiagnostics(!showDiagnostics)}
+               className={cn("w-8 h-8", showDiagnostics ? "text-[#33E0FF]" : "text-white/40")}
+            >
+              <Terminal className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
+
+        {isInitialized && showDiagnostics && (
+          <div className="w-full bg-white/5 border border-white/10 rounded-xl p-4 mb-2 backdrop-blur-md animate-in fade-in zoom-in-95 pointer-events-auto">
             <div className="flex gap-2">
               <Input 
                 value={testInput}
                 onChange={(e) => setTestInput(e.target.value)}
-                placeholder="Type a message to test..."
-                className="bg-black/40 border-white/10 text-white text-xs h-9 focus-visible:ring-[#33E0FF]"
+                placeholder="Type to chat..."
+                className="bg-black/40 border-white/10 text-white text-xs h-9"
                 onKeyDown={(e) => e.key === 'Enter' && handleAkennaQuery(testInput)}
               />
-              <Button 
-                onClick={() => {
-                  handleAkennaQuery(testInput);
-                  setTestInput('');
-                }}
-                disabled={status !== 'listening' || !testInput.trim()}
-                className="bg-[#33E0FF] hover:bg-[#33E0FF]/80 text-black h-9 px-3"
-              >
+              <Button onClick={() => handleAkennaQuery(testInput)} className="bg-[#33E0FF] text-black h-9 px-3">
                 <Send className="w-4 h-4" />
               </Button>
             </div>
@@ -374,7 +318,7 @@ export default function AkennaPage() {
         {!isInitialized ? (
           <Button 
             onClick={toggleAkenna}
-            className="rounded-full px-8 py-8 bg-transparent border-2 border-[#33E0FF] text-[#33E0FF] hover:bg-[#33E0FF]/10 transition-all group overflow-hidden"
+            className="rounded-full px-8 py-8 bg-transparent border-2 border-[#33E0FF] text-[#33E0FF] hover:bg-[#33E0FF]/10 group"
           >
             <Power className="mr-3 w-6 h-6 group-hover:scale-110 transition-transform" />
             <span className="font-headline tracking-widest uppercase font-bold text-lg">Initialize Akenna</span>
@@ -385,54 +329,28 @@ export default function AkennaPage() {
               variant="outline"
               size="icon"
               onClick={toggleAkenna}
-              className="rounded-full w-14 h-14 border-[#3377FF]/40 text-[#3377FF]/60 hover:text-[#3377FF] hover:border-[#3377FF] transition-all bg-transparent"
-              title="Deactivate"
+              className="rounded-full w-14 h-14 border-[#3377FF]/40 text-[#3377FF]/60 hover:text-[#3377FF] bg-transparent"
             >
               <MicOff className="w-6 h-6" />
             </Button>
             <div className="flex flex-col items-center">
               <div className="text-[10px] text-[#33E0FF]/40 font-headline uppercase tracking-[0.4em] mb-2">
-                {status === 'listening' ? 'Vocal Intake' : status === 'processing' ? 'Neural Processing' : 'Vocal Synthesis'}
+                {status === 'listening' ? 'Intake' : status === 'processing' ? 'Thinking' : 'Talking'}
               </div>
               <div className="flex gap-1">
                 {[...Array(5)].map((_, i) => (
-                  <div 
-                    key={i} 
-                    className={cn(
-                      "w-1 h-3 rounded-full bg-[#33E0FF] transition-all duration-300",
-                      status === 'listening' ? "animate-pulse" : status === 'processing' ? "animate-bounce" : "opacity-20"
-                    )}
-                    style={{ 
-                      animationDelay: `${i * 0.1}s`,
-                      height: status === 'listening' ? `${3 + volume * 25}px` : '3px'
-                    }}
+                  <div key={i} className={cn("w-1 h-3 rounded-full bg-[#33E0FF] transition-all", status === 'listening' || status === 'processing' ? "animate-pulse" : "opacity-20")}
+                    style={{ animationDelay: `${i * 0.1}s`, height: status === 'listening' ? `${3 + volume * 25}px` : '3px' }}
                   />
                 ))}
               </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <Button 
-                 variant="outline"
-                 size="icon"
-                 onClick={() => window.location.reload()}
-                 className="rounded-full w-10 h-10 border-white/10 text-white/20 hover:text-white hover:border-white transition-all bg-transparent"
-                 title="System Reboot"
-               >
-                 <RefreshCw className="w-4 h-4" />
-               </Button>
-               <Button 
-                 variant="outline"
-                 size="icon"
-                 onClick={() => setShowDiagnostics(!showDiagnostics)}
-                 className={cn(
-                   "rounded-full w-10 h-10 border-white/10 transition-all bg-transparent",
-                   showDiagnostics ? "text-[#33E0FF] border-[#33E0FF]/30" : "text-white/20 hover:text-white"
-                 )}
-                 title="Toggle Diagnostics"
-               >
-                 <Terminal className="w-4 h-4" />
-               </Button>
-            </div>
+            <Button 
+               variant="outline" size="icon" onClick={() => window.location.reload()}
+               className="rounded-full w-10 h-10 border-white/10 text-white/20 hover:text-white bg-transparent"
+             >
+               <RefreshCw className="w-4 h-4" />
+             </Button>
           </div>
         )}
       </div>
