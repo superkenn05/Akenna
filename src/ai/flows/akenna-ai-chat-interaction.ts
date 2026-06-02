@@ -21,12 +21,15 @@ const AkennaAIChatInteractionInputSchema = z.object({
 export type AkennaAIChatInteractionInput = z.infer<typeof AkennaAIChatInteractionInputSchema>;
 
 // Define the output schema for the chat interaction
+// We make audio optional and add an error field to handle rate limits gracefully without throwing
 const AkennaAIChatInteractionOutputSchema = z.object({
   audio: z
     .string()
+    .optional()
     .describe(
       "The AI's spoken response as an audio data URI (WAV format), including a MIME type and Base64 encoding. Expected format: 'data:audio/wav;base64,<encoded_data>'."
     ),
+  error: z.string().optional().describe("A user-friendly error message if the interaction fails."),
 });
 export type AkennaAIChatInteractionOutput = z.infer<typeof AkennaAIChatInteractionOutputSchema>;
 
@@ -77,56 +80,61 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
     outputSchema: AkennaAIChatInteractionOutputSchema,
   },
   async (input) => {
-    // 1. Generate text response from the LLM
-    let llmResponse;
     try {
-      const { output } = await akennaChatPrompt(input);
-      llmResponse = output;
-    } catch (err: any) {
-      if (err.message?.includes('429') || err.message?.includes('quota')) {
-        throw new Error('Neural capacity reached. Please wait a moment before trying again.');
+      // 1. Generate text response from the LLM
+      let llmResponse;
+      try {
+        const { output } = await akennaChatPrompt(input);
+        llmResponse = output;
+      } catch (err: any) {
+        if (err.message?.includes('429') || err.message?.includes('quota')) {
+          return { error: 'Neural capacity reached. Please wait a moment before trying again.' };
+        }
+        throw err;
       }
-      throw err;
-    }
 
-    if (!llmResponse?.text) {
-      throw new Error('Failed to generate text response from LLM.');
-    }
+      if (!llmResponse?.text) {
+        return { error: 'Failed to generate text response.' };
+      }
 
-    // 2. Convert the text response to speech using TTS model
-    try {
-      const { media } = await ai.generate({
-        model: googleAI.model('gemini-2.5-flash-preview-tts'),
-        config: {
-          responseModalities: ['AUDIO'],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Algenib' },
+      // 2. Convert the text response to speech using TTS model
+      try {
+        const { media } = await ai.generate({
+          model: googleAI.model('gemini-2.5-flash-preview-tts'),
+          config: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: 'Algenib' },
+              },
             },
           },
-        },
-        prompt: llmResponse.text,
-      });
+          prompt: llmResponse.text,
+        });
 
-      if (!media) {
-        throw new Error('No audio media returned from TTS model.');
+        if (!media) {
+          return { error: 'Vocal synthesis failed.' };
+        }
+
+        // 3. Convert the returned PCM audio to WAV format
+        const audioBuffer = Buffer.from(
+          media.url.substring(media.url.indexOf(',') + 1), // Extract base64 data
+          'base64'
+        );
+        const wavAudioBase64 = await toWav(audioBuffer);
+
+        return {
+          audio: 'data:audio/wav;base64,' + wavAudioBase64,
+        };
+      } catch (err: any) {
+        if (err.message?.includes('429') || err.message?.includes('quota')) {
+          return { error: 'Vocal synthesizer is cooling down (Rate limit). Please wait 30 seconds.' };
+        }
+        throw err;
       }
-
-      // 3. Convert the returned PCM audio to WAV format
-      const audioBuffer = Buffer.from(
-        media.url.substring(media.url.indexOf(',') + 1), // Extract base64 data
-        'base64'
-      );
-      const wavAudioBase64 = await toWav(audioBuffer);
-
-      return {
-        audio: 'data:audio/wav;base64,' + wavAudioBase64,
-      };
-    } catch (err: any) {
-      if (err.message?.includes('429') || err.message?.includes('quota')) {
-        throw new Error('Vocal synthesizer is cooling down (Rate limit). Please wait 30 seconds.');
-      }
-      throw err;
+    } catch (globalErr: any) {
+      console.error('[Flow Error]:', globalErr);
+      return { error: 'A critical system error occurred.' };
     }
   }
 );

@@ -135,10 +135,23 @@ export default function AkennaPage() {
     
     try {
       const response = await akennaAIChatInteraction({ text });
-      playResponse(response.audio);
+      
+      if (response.error) {
+        setError(response.error);
+        setStatus('listening');
+        if (recognitionRef.current) {
+          try { recognitionRef.current.start(); } catch(e) {}
+        }
+        return;
+      }
+
+      if (response.audio) {
+        playResponse(response.audio);
+      } else {
+        throw new Error("Received no audio data.");
+      }
     } catch (err: any) {
       console.error('[Akenna System] Interaction error:', err);
-      // Use the specific error message from the AI Flow if available
       setError(err.message || "AI failed to respond. Check connection.");
       setStatus('listening');
       if (recognitionRef.current) {
