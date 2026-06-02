@@ -102,7 +102,6 @@ export default function AkennaPage() {
 
       if (response.error) {
         setError(response.error);
-        // If it's a quota error on voice, we still have text response to show
       }
 
       if (voiceEnabled) {
@@ -418,11 +417,6 @@ export default function AkennaPage() {
              </Button>
           </div>
         )}
-      </div>
-
-      <div className="fixed top-12 left-12 opacity-10 font-headline tracking-tighter pointer-events-none select-none">
-        <div className="text-4xl font-bold text-[#33E0FF]">A K E N N A</div>
-        <div className="text-sm text-[#3377FF] pl-1">V.01 CORE_SYSTEM</div>
       </div>
     </main>
   );
