@@ -71,6 +71,7 @@ export default function AkennaPage() {
   const handleAkennaQuery = async (text: string) => {
     if (status === 'processing' || status === 'speaking' || !text.trim()) return;
     
+    console.log('[Akenna System] Query:', text);
     setError(null);
     setAiTextResponse('');
     setUserTranscript(text);
@@ -86,10 +87,12 @@ export default function AkennaPage() {
     try {
       const response = await akennaAIChatInteraction({ 
         text, 
-        history: history.slice(-6), // Send last 3 turns
+        history: history.slice(-6), 
         voiceEnabled 
       });
       
+      console.log('[Akenna System] Response received');
+
       if (response.text) {
         setAiTextResponse(response.text);
         setHistory(prev => [...prev, 
@@ -103,12 +106,14 @@ export default function AkennaPage() {
       }
 
       if (response.audio && voiceEnabled) {
+        console.log('[Akenna System] Playing audio response');
         playResponse(response.audio);
       } else {
         setStatus('listening');
         setTimeout(() => restartRecognition(), 100);
       }
     } catch (err: any) {
+      console.error('[Akenna System] Interaction error:', err);
       setError("AI failed to respond. Check connection.");
       setStatus('listening');
       restartRecognition();
@@ -129,7 +134,11 @@ export default function AkennaPage() {
       recognition.interimResults = true;
       recognition.lang = 'en-US';
 
-      recognition.onstart = () => setStatus('listening');
+      recognition.onstart = () => {
+        console.log('[Akenna Speech] Recognition started');
+        setStatus('listening');
+      };
+
       recognition.onresult = (event: any) => {
         let interimTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -147,6 +156,7 @@ export default function AkennaPage() {
           if (status === 'listening') restartRecognition();
           return;
         }
+        console.error('[Akenna Speech] Error:', event.error);
         if (event.error === 'not-allowed') {
           setError("Microphone access denied.");
           setIsInitialized(false);
@@ -154,6 +164,7 @@ export default function AkennaPage() {
       };
 
       recognition.onend = () => {
+        console.log('[Akenna Speech] Recognition ended');
         if (isInitialized && status === 'listening') restartRecognition();
       };
 
@@ -168,7 +179,9 @@ export default function AkennaPage() {
     try {
       setStatus('speaking');
       if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
+      
       audioRef.current.src = audioBase64;
+      audioRef.current.volume = 1.0;
       
       const updateVolume = () => {
         if (analyserRef.current && status === 'speaking') {
@@ -184,13 +197,16 @@ export default function AkennaPage() {
 
       audioRef.current.onplay = () => updateVolume();
       audioRef.current.onended = () => {
+        console.log('[Akenna System] Audio ended');
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         setVolume(0);
         setStatus('listening');
         restartRecognition();
       };
+      
       await audioRef.current.play();
     } catch (err) {
+      console.error('[Akenna System] Playback error:', err);
       setStatus('listening');
       restartRecognition();
     }
@@ -207,6 +223,8 @@ export default function AkennaPage() {
         const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
         const ctx = new AudioContextClass();
         const audio = new Audio();
+        
+        // Use single persistent source to avoid AudioContext renderer errors
         const source = ctx.createMediaElementSource(audio);
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 256;
@@ -217,7 +235,9 @@ export default function AkennaPage() {
         audioRef.current = audio;
         analyserRef.current = analyser;
         setIsInitialized(true);
+        console.log('[Akenna System] Initialized');
       } catch (err) {
+        console.error('[Akenna System] Init error:', err);
         setError("Audio system failed to start.");
       }
     } else {

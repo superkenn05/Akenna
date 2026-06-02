@@ -41,7 +41,7 @@ export type AkennaAIChatInteractionOutput = z.infer<typeof AkennaAIChatInteracti
 async function toWav(
   pcmData: Buffer,
   channels = 1,
-  rate = 22050,
+  rate = 24000, // Gemini TTS standard rate
   sampleWidth = 2
 ): Promise<string> {
   return new Promise((resolve, reject) => {
