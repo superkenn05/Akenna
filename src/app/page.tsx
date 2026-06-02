@@ -272,11 +272,8 @@ export default function AkennaPage() {
         audioRef.current = audio;
         analyserRef.current = analyser;
         
-        // Brief delay to allow eyes transition to be visible
-        setTimeout(() => {
-          setIsInitialized(true);
-          setStatus('listening');
-        }, 100);
+        setIsInitialized(true);
+        setStatus('listening');
       } catch (err) {
         setError("Audio system initialization failed. Please refresh.");
       }
@@ -333,7 +330,10 @@ export default function AkennaPage() {
         <AkennaFace status={status} isSpeaking={status === 'speaking'} volume={volume} />
       </div>
 
-      <div className="fixed bottom-12 z-30 flex flex-col items-center gap-6 w-full max-w-md px-4">
+      {/* Control Area - Ghost UI (Visible on Hover/Interaction) */}
+      <div className="fixed bottom-12 z-30 flex flex-col items-center gap-6 w-full max-w-md px-4 group/controls transition-all duration-500">
+        
+        {/* Error Messages (Always visible if exists) */}
         {error && (
           <div className="bg-destructive/20 text-destructive text-xs px-4 py-2 rounded-full border border-destructive/30 flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 mb-2 text-center max-w-[90vw]">
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -341,88 +341,91 @@ export default function AkennaPage() {
           </div>
         )}
 
-        {isInitialized && (
-          <div className="flex items-center gap-6 bg-white/5 px-6 py-3 rounded-full border border-white/10 backdrop-blur-sm pointer-events-auto">
-            <div className="flex items-center gap-3">
-              {voiceEnabled ? <Volume2 className="w-4 h-4 text-[#33E0FF]" /> : <VolumeX className="w-4 h-4 text-white/40" />}
-              <Switch checked={voiceEnabled} onCheckedChange={setVoiceEnabled} />
-              <Label className="text-[10px] uppercase tracking-wider text-white/60">Voice</Label>
-            </div>
-            <Separator orientation="vertical" className="h-6 bg-white/10" />
-            <Button 
-               variant="ghost" 
-               size="icon" 
-               onClick={() => setShowDiagnostics(!showDiagnostics)}
-               className={cn("w-8 h-8", showDiagnostics ? "text-[#33E0FF]" : "text-white/40")}
-            >
-              <Terminal className="w-4 h-4" />
-            </Button>
-          </div>
-        )}
-
-        {isInitialized && showDiagnostics && (
-          <div className="w-full bg-white/5 border border-white/10 rounded-xl p-4 mb-2 backdrop-blur-md animate-in fade-in zoom-in-95 pointer-events-auto flex flex-col gap-3">
-            <div className="flex gap-2">
-              <Input 
-                value={testInput}
-                onChange={(e) => setTestInput(e.target.value)}
-                placeholder="Type to chat..."
-                className="bg-black/40 border-white/10 text-white text-xs h-9"
-                onKeyDown={(e) => e.key === 'Enter' && handleAkennaQuery(testInput)}
-              />
-              <Button onClick={() => handleAkennaQuery(testInput)} className="bg-[#33E0FF] text-black h-9 px-3">
-                <Send className="w-4 h-4" />
+        <div className="flex flex-col items-center gap-6 w-full opacity-0 group-hover/controls:opacity-100 transition-opacity duration-300">
+          
+          {isInitialized && (
+            <div className="flex items-center gap-6 bg-white/5 px-6 py-3 rounded-full border border-white/10 backdrop-blur-sm pointer-events-auto">
+              <div className="flex items-center gap-3">
+                {voiceEnabled ? <Volume2 className="w-4 h-4 text-[#33E0FF]" /> : <VolumeX className="w-4 h-4 text-white/40" />}
+                <Switch checked={voiceEnabled} onCheckedChange={setVoiceEnabled} />
+                <Label className="text-[10px] uppercase tracking-wider text-white/60">Voice</Label>
+              </div>
+              <Separator orientation="vertical" className="h-6 bg-white/10" />
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setShowDiagnostics(!showDiagnostics)}
+                className={cn("w-8 h-8", showDiagnostics ? "text-[#33E0FF]" : "text-white/40")}
+              >
+                <Terminal className="w-4 h-4" />
               </Button>
             </div>
-            <Button 
-              variant="outline" 
-              onClick={() => handleAkennaQuery("Neural system online. How can I assist you?")}
-              className="w-full text-[10px] uppercase tracking-widest border-white/10 bg-white/5 h-8 hover:bg-[#33E0FF]/20"
-            >
-              <Play className="w-3 h-3 mr-2 text-[#33E0FF]" />
-              Quick Voice Test
-            </Button>
-          </div>
-        )}
+          )}
 
-        {!isInitialized ? (
-          <Button 
-            onClick={toggleAkenna}
-            className="rounded-full px-8 py-8 bg-transparent border-2 border-[#33E0FF] text-[#33E0FF] hover:bg-[#33E0FF]/10 group animate-in fade-in slide-in-from-bottom-4"
-          >
-            <Power className="mr-3 w-6 h-6 group-hover:scale-110 transition-transform" />
-            <span className="font-headline tracking-widest uppercase font-bold text-lg">Initialize Akenna</span>
-          </Button>
-        ) : (
-          <div className="flex items-center gap-4 animate-in zoom-in-95 duration-500">
-             <Button 
-              variant="outline"
-              size="icon"
-              onClick={toggleAkenna}
-              className="rounded-full w-14 h-14 border-[#3377FF]/40 text-[#3377FF]/60 hover:text-[#3377FF] bg-transparent"
-            >
-              <MicOff className="w-6 h-6" />
-            </Button>
-            <div className="flex flex-col items-center">
-              <div className="text-[10px] text-[#33E0FF]/40 font-headline uppercase tracking-[0.4em] mb-2">
-                {status === 'listening' ? 'Intake' : status === 'processing' ? 'Thinking' : 'Talking'}
+          {isInitialized && showDiagnostics && (
+            <div className="w-full bg-white/5 border border-white/10 rounded-xl p-4 mb-2 backdrop-blur-md animate-in fade-in zoom-in-95 pointer-events-auto flex flex-col gap-3">
+              <div className="flex gap-2">
+                <Input 
+                  value={testInput}
+                  onChange={(e) => setTestInput(e.target.value)}
+                  placeholder="Type to chat..."
+                  className="bg-black/40 border-white/10 text-white text-xs h-9"
+                  onKeyDown={(e) => e.key === 'Enter' && handleAkennaQuery(testInput)}
+                />
+                <Button onClick={() => handleAkennaQuery(testInput)} className="bg-[#33E0FF] text-black h-9 px-3">
+                  <Send className="w-4 h-4" />
+                </Button>
               </div>
-              <div className="flex gap-1">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className={cn("w-1 h-3 rounded-full bg-[#33E0FF] transition-all", status === 'listening' || status === 'processing' ? "animate-pulse" : "opacity-20")}
-                    style={{ animationDelay: `${i * 0.1}s`, height: status === 'listening' ? `${3 + volume * 25}px` : '3px' }}
-                  />
-                ))}
-              </div>
+              <Button 
+                variant="outline" 
+                onClick={() => handleAkennaQuery("Neural system online. How can I assist you?")}
+                className="w-full text-[10px] uppercase tracking-widest border-white/10 bg-white/5 h-8 hover:bg-[#33E0FF]/20"
+              >
+                <Play className="w-3 h-3 mr-2 text-[#33E0FF]" />
+                Quick Voice Test
+              </Button>
             </div>
+          )}
+
+          {!isInitialized ? (
             <Button 
-               variant="outline" size="icon" onClick={() => window.location.reload()}
-               className="rounded-full w-10 h-10 border-white/10 text-white/20 hover:text-white bg-transparent"
-             >
-               <RefreshCw className="w-4 h-4" />
-             </Button>
-          </div>
-        )}
+              onClick={toggleAkenna}
+              className="rounded-full px-8 py-8 bg-transparent border-2 border-[#33E0FF] text-[#33E0FF] hover:bg-[#33E0FF]/10 group animate-in fade-in slide-in-from-bottom-4"
+            >
+              <Power className="mr-3 w-6 h-6 group-hover:scale-110 transition-transform" />
+              <span className="font-headline tracking-widest uppercase font-bold text-lg">Initialize Akenna</span>
+            </Button>
+          ) : (
+            <div className="flex items-center gap-4 animate-in zoom-in-95 duration-500">
+              <Button 
+                variant="outline"
+                size="icon"
+                onClick={toggleAkenna}
+                className="rounded-full w-14 h-14 border-[#3377FF]/40 text-[#3377FF]/60 hover:text-[#3377FF] bg-transparent"
+              >
+                <MicOff className="w-6 h-6" />
+              </Button>
+              <div className="flex flex-col items-center">
+                <div className="text-[10px] text-[#33E0FF]/40 font-headline uppercase tracking-[0.4em] mb-2">
+                  {status === 'listening' ? 'Intake' : status === 'processing' ? 'Thinking' : 'Talking'}
+                </div>
+                <div className="flex gap-1">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className={cn("w-1 h-3 rounded-full bg-[#33E0FF] transition-all", status === 'listening' || status === 'processing' ? "animate-pulse" : "opacity-20")}
+                      style={{ animationDelay: `${i * 0.1}s`, height: status === 'listening' ? `${3 + volume * 25}px` : '3px' }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <Button 
+                variant="outline" size="icon" onClick={() => window.location.reload()}
+                className="rounded-full w-10 h-10 border-white/10 text-white/20 hover:text-white bg-transparent"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     </main>
   );
