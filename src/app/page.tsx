@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -9,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { MicOff, Power, RefreshCw, AlertCircle, Send, Terminal, MessageSquare, Volume2, VolumeX, Play } from 'lucide-react';
+import { MicOff, Power, RefreshCw, AlertCircle, Send, Terminal, Volume2, VolumeX, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type HistoryMessage = { role: 'user' | 'model'; text: string };
@@ -25,7 +24,6 @@ export default function AkennaPage() {
   
   // Dialogue states
   const [userTranscript, setUserTranscript] = useState('');
-  const [aiTextResponse, setAiTextResponse] = useState('');
   const [history, setHistory] = useState<HistoryMessage[]>([]);
   
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -74,7 +72,6 @@ export default function AkennaPage() {
     if (status === 'processing' || status === 'speaking' || !text.trim()) return;
     
     setError(null);
-    setAiTextResponse('');
     setUserTranscript(text);
 
     if (recognitionRef.current) {
@@ -93,7 +90,6 @@ export default function AkennaPage() {
       });
       
       if (response.text) {
-        setAiTextResponse(response.text);
         setHistory(prev => [...prev, 
           { role: 'user', text }, 
           { role: 'model', text: response.text! }
@@ -240,17 +236,13 @@ export default function AkennaPage() {
       
       await audioRef.current.play();
     } catch (err) {
-      if (aiTextResponse) playBrowserFallback(aiTextResponse);
-      else {
-        setStatus('listening');
-        restartRecognition();
-      }
+      setStatus('listening');
+      restartRecognition();
     }
   };
 
   const toggleAkenna = async () => {
     setError(null);
-    setAiTextResponse('');
     setUserTranscript('');
     setHistory([]);
     
@@ -304,6 +296,19 @@ export default function AkennaPage() {
   return (
     <main className="min-h-screen w-full flex flex-col items-center justify-center relative bg-[#050E10] px-6 py-12 overflow-hidden">
       
+      {/* Error Overlay - Top Left */}
+      {error && (
+        <div className="fixed top-8 left-8 z-30 flex flex-col items-start max-w-[30%] pointer-events-none select-none animate-in fade-in slide-in-from-left-4">
+          <div className="bg-destructive/10 border border-destructive/20 rounded-2xl px-6 py-3 backdrop-blur-sm shadow-lg flex items-center gap-3">
+            <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
+            <div>
+              <div className="text-[10px] text-destructive uppercase tracking-widest mb-1 font-bold">System Alert</div>
+              <div className="text-destructive/90 text-xs italic">{error}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* User Dialogue Overlay - Top Right */}
       {userTranscript && (
         <div className="fixed top-8 right-8 z-30 flex flex-col items-end max-w-[30%] pointer-events-none select-none animate-in fade-in slide-in-from-right-4">
@@ -321,13 +326,6 @@ export default function AkennaPage() {
       {/* Control Area - Stealth Mode (Hover to Reveal) */}
       <div className="fixed bottom-12 z-40 flex flex-col items-center gap-6 w-full max-w-md px-4 group/controls transition-all duration-500">
         
-        {error && (
-          <div className="bg-destructive/20 text-destructive text-xs px-4 py-2 rounded-full border border-destructive/30 flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 mb-2 text-center max-w-[90vw]">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            {error}
-          </div>
-        )}
-
         <div className="flex flex-col items-center gap-6 w-full opacity-0 group-hover/controls:opacity-100 transition-opacity duration-300">
           
           {isInitialized && (
