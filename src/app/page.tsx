@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -309,19 +310,6 @@ export default function AkennaPage() {
           <div className="bg-white/5 border border-white/10 rounded-2xl px-6 py-3 backdrop-blur-sm shadow-lg">
             <div className="text-[10px] text-white/40 uppercase tracking-widest mb-1 font-bold text-right">You</div>
             <div className="text-white/80 text-sm italic text-right">"{userTranscript}"</div>
-          </div>
-        </div>
-      )}
-
-      {/* AI Dialogue Overlay - Top Center */}
-      {aiTextResponse && (
-        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-20 w-full max-w-xl px-6 pointer-events-none select-none animate-in fade-in zoom-in-95">
-          <div className="bg-[#33E0FF]/5 border border-[#33E0FF]/20 rounded-2xl px-6 py-4 backdrop-blur-md shadow-2xl">
-            <div className="flex items-center gap-2 mb-2">
-              <MessageSquare className="w-3 h-3 text-[#33E0FF]" />
-              <span className="text-[10px] text-[#33E0FF] uppercase tracking-widest font-bold">Akenna</span>
-            </div>
-            <div className="text-white text-base leading-relaxed">{aiTextResponse}</div>
           </div>
         </div>
       )}
