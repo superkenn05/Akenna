@@ -87,10 +87,12 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
         const { output } = await akennaChatPrompt(input);
         llmResponse = output;
       } catch (err: any) {
+        // Handle rate limits for the text model
         if (err.message?.includes('429') || err.message?.includes('quota')) {
           return { error: 'Neural capacity reached. Please wait a moment before trying again.' };
         }
-        throw err;
+        console.error('[Flow] LLM Error:', err);
+        return { error: 'Akenna is having trouble thinking right now.' };
       }
 
       if (!llmResponse?.text) {
@@ -127,10 +129,12 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
           audio: 'data:audio/wav;base64,' + wavAudioBase64,
         };
       } catch (err: any) {
+        // Handle rate limits for the TTS model
         if (err.message?.includes('429') || err.message?.includes('quota')) {
-          return { error: 'Vocal synthesizer is cooling down (Rate limit). Please wait 30 seconds.' };
+          return { error: 'Vocal synthesizer is cooling down. Please wait 30 seconds.' };
         }
-        throw err;
+        console.error('[Flow] TTS Error:', err);
+        return { error: 'Akenna is currently mute due to a system glitch.' };
       }
     } catch (globalErr: any) {
       console.error('[Flow Error]:', globalErr);

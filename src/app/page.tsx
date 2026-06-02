@@ -83,6 +83,7 @@ export default function AkennaPage() {
 
       recognition.onstart = () => {
         setStatus('listening');
+        console.log('[Akenna Speech] Recognition service started.');
       };
 
       recognition.onresult = (event: any) => {
@@ -94,6 +95,7 @@ export default function AkennaPage() {
         }
         
         if (finalTranscript.trim()) {
+          console.log('[Akenna Speech] Transcribed:', finalTranscript.trim());
           handleAkennaQuery(finalTranscript.trim());
         }
       };
@@ -108,7 +110,9 @@ export default function AkennaPage() {
       };
 
       recognition.onend = () => {
-        if (isInitialized && status !== 'processing' && status !== 'speaking') {
+        console.log('[Akenna Speech] Recognition service ended.');
+        // Auto-restart only if we're still supposed to be listening
+        if (isInitialized && status === 'listening') {
           try {
             recognition.start();
           } catch (e) {}
