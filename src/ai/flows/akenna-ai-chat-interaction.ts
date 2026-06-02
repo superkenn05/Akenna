@@ -21,13 +21,13 @@ const AkennaAIChatInteractionInputSchema = z.object({
 export type AkennaAIChatInteractionInput = z.infer<typeof AkennaAIChatInteractionInputSchema>;
 
 // Define the output schema for the chat interaction
-// We make audio optional and add an error field to handle rate limits gracefully without throwing
 const AkennaAIChatInteractionOutputSchema = z.object({
+  text: z.string().optional().describe("The AI's text response."),
   audio: z
     .string()
     .optional()
     .describe(
-      "The AI's spoken response as an audio data URI (WAV format), including a MIME type and Base64 encoding. Expected format: 'data:audio/wav;base64,<encoded_data>'."
+      "The AI's spoken response as an audio data URI (WAV format)."
     ),
   error: z.string().optional().describe("A user-friendly error message if the interaction fails."),
 });
@@ -68,6 +68,7 @@ const akennaChatPrompt = ai.definePrompt({
   output: { schema: z.object({ text: z.string().describe('The AI\'s text response.') }) },
   prompt: `You are Akenna AI, a helpful, intelligent, and engaging AI assistant. 
   Respond naturally and contextually to the user's query. Keep responses concise for voice interaction.
+  If the user speaks in Tagalog, respond in a mix of Tagalog and English (Taglish) to be more conversational.
   
   User query: {{{text}}} `,
 });
@@ -87,9 +88,8 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
         const { output } = await akennaChatPrompt(input);
         llmResponse = output;
       } catch (err: any) {
-        // Handle rate limits for the text model
         if (err.message?.includes('429') || err.message?.includes('quota')) {
-          return { error: 'Neural capacity reached. Please wait a moment before trying again.' };
+          return { error: 'Neural capacity reached. Please wait a moment.' };
         }
         console.error('[Flow] LLM Error:', err);
         return { error: 'Akenna is having trouble thinking right now.' };
@@ -98,6 +98,8 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
       if (!llmResponse?.text) {
         return { error: 'Failed to generate text response.' };
       }
+
+      const textResponse = llmResponse.text;
 
       // 2. Convert the text response to speech using TTS model
       try {
@@ -111,30 +113,31 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
               },
             },
           },
-          prompt: llmResponse.text,
+          prompt: textResponse,
         });
 
         if (!media) {
-          return { error: 'Vocal synthesis failed.' };
+          return { text: textResponse, error: 'Vocal synthesis failed, but here is my response.' };
         }
 
-        // 3. Convert the returned PCM audio to WAV format
         const audioBuffer = Buffer.from(
-          media.url.substring(media.url.indexOf(',') + 1), // Extract base64 data
+          media.url.substring(media.url.indexOf(',') + 1),
           'base64'
         );
         const wavAudioBase64 = await toWav(audioBuffer);
 
         return {
+          text: textResponse,
           audio: 'data:audio/wav;base64,' + wavAudioBase64,
         };
       } catch (err: any) {
-        // Handle rate limits for the TTS model
         if (err.message?.includes('429') || err.message?.includes('quota')) {
-          return { error: 'Vocal synthesizer is cooling down. Please wait 30 seconds.' };
+          return { 
+            text: textResponse, 
+            error: 'Vocal synthesizer is cooling down. I will respond via text for now.' 
+          };
         }
-        console.error('[Flow] TTS Error:', err);
-        return { error: 'Akenna is currently mute due to a system glitch.' };
+        return { text: textResponse, error: 'I am currently mute, but here is my response.' };
       }
     } catch (globalErr: any) {
       console.error('[Flow Error]:', globalErr);
