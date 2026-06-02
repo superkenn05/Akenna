@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -56,7 +57,9 @@ export default function AkennaPage() {
           micAnalyserRef.current.getByteFrequencyData(dataArray);
           let sum = 0;
           for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
-          setVolume(Math.min(1.5, (sum / bufferLength) / 40));
+          // Scale volume for visual sensitivity
+          const level = Math.min(1.5, (sum / bufferLength) / 40);
+          setVolume(level);
           animationFrameRef.current = requestAnimationFrame(updateMicVolume);
         } else if (status !== 'speaking') {
           setVolume(0);
@@ -105,16 +108,24 @@ export default function AkennaPage() {
         setError(response.error);
       }
 
-      if (response.audio && voiceEnabled) {
-        console.log('[Akenna System] Playing audio response');
-        playResponse(response.audio);
+      if (voiceEnabled) {
+        if (response.audio) {
+          console.log('[Akenna System] Playing Neural AI voice');
+          playResponse(response.audio);
+        } else if (response.text) {
+          console.log('[Akenna System] AI Quota reached. Falling back to Browser TTS.');
+          playBrowserFallback(response.text);
+        } else {
+          setStatus('listening');
+          setTimeout(() => restartRecognition(), 100);
+        }
       } else {
         setStatus('listening');
         setTimeout(() => restartRecognition(), 100);
       }
     } catch (err: any) {
       console.error('[Akenna System] Interaction error:', err);
-      setError("AI failed to respond. Check connection.");
+      setError("Akenna is having trouble connecting.");
       setStatus('listening');
       restartRecognition();
     }
@@ -122,7 +133,11 @@ export default function AkennaPage() {
 
   const restartRecognition = () => {
     if (recognitionRef.current && isInitialized && status !== 'processing' && status !== 'speaking') {
-      try { recognitionRef.current.start(); } catch (e) {}
+      try { 
+        recognitionRef.current.start(); 
+      } catch (e) {
+        // Silently ignore if already started
+      }
     }
   };
 
@@ -135,7 +150,7 @@ export default function AkennaPage() {
       recognition.lang = 'en-US';
 
       recognition.onstart = () => {
-        console.log('[Akenna Speech] Recognition started');
+        console.log('[Akenna Speech] Recognition service started.');
         setStatus('listening');
       };
 
@@ -153,7 +168,6 @@ export default function AkennaPage() {
 
       recognition.onerror = (event: any) => {
         if (event.error === 'aborted' || event.error === 'no-speech') {
-          if (status === 'listening') restartRecognition();
           return;
         }
         console.error('[Akenna Speech] Error:', event.error);
@@ -164,15 +178,53 @@ export default function AkennaPage() {
       };
 
       recognition.onend = () => {
-        console.log('[Akenna Speech] Recognition ended');
+        console.log('[Akenna Speech] Recognition service ended.');
         if (isInitialized && status === 'listening') restartRecognition();
       };
 
       recognitionRef.current = recognition;
     } else {
-      setError("Speech recognition not supported.");
+      setError("Speech recognition not supported in this browser.");
     }
   }, [isInitialized, status, history, voiceEnabled]);
+
+  const playBrowserFallback = (text: string) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    
+    // Stop any current speech
+    window.speechSynthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = 1.0;
+    utterance.pitch = 1.1;
+
+    utterance.onstart = () => {
+      setStatus('speaking');
+      // Simulate volume for browser TTS since we don't have direct analyzer access easily
+      const simulateVolume = () => {
+        if (status === 'speaking') {
+          setVolume(0.2 + Math.random() * 0.3);
+          animationFrameRef.current = requestAnimationFrame(simulateVolume);
+        }
+      };
+      simulateVolume();
+    };
+
+    utterance.onend = () => {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      setVolume(0);
+      setStatus('listening');
+      restartRecognition();
+    };
+
+    utterance.onerror = () => {
+      setStatus('listening');
+      restartRecognition();
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
 
   const playResponse = async (audioBase64: string) => {
     if (!audioContextRef.current || !audioRef.current) return;
@@ -197,7 +249,7 @@ export default function AkennaPage() {
 
       audioRef.current.onplay = () => updateVolume();
       audioRef.current.onended = () => {
-        console.log('[Akenna System] Audio ended');
+        console.log('[Akenna System] Audio playback ended.');
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         setVolume(0);
         setStatus('listening');
@@ -207,8 +259,12 @@ export default function AkennaPage() {
       await audioRef.current.play();
     } catch (err) {
       console.error('[Akenna System] Playback error:', err);
-      setStatus('listening');
-      restartRecognition();
+      // If neural playback fails, try browser fallback as a last resort
+      if (aiTextResponse) playBrowserFallback(aiTextResponse);
+      else {
+        setStatus('listening');
+        restartRecognition();
+      }
     }
   };
 
@@ -224,7 +280,7 @@ export default function AkennaPage() {
         const ctx = new AudioContextClass();
         const audio = new Audio();
         
-        // Use single persistent source to avoid AudioContext renderer errors
+        // Single persistent source to avoid AudioContext renderer limit errors
         const source = ctx.createMediaElementSource(audio);
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 256;
@@ -235,10 +291,10 @@ export default function AkennaPage() {
         audioRef.current = audio;
         analyserRef.current = analyser;
         setIsInitialized(true);
-        console.log('[Akenna System] Initialized');
+        console.log('[Akenna System] Initialized successfully.');
       } catch (err) {
-        console.error('[Akenna System] Init error:', err);
-        setError("Audio system failed to start.");
+        console.error('[Akenna System] Initialization error:', err);
+        setError("Audio system failed. Please refresh the page.");
       }
     } else {
       cleanup();
@@ -254,6 +310,7 @@ export default function AkennaPage() {
     if (micStreamRef.current) { micStreamRef.current.getTracks().forEach(t => t.stop()); micStreamRef.current = null; }
     if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
+    if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
   };
 
   useEffect(() => {
