@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
 import { MicOff, Power, RefreshCw, AlertCircle, Send, Terminal, MessageSquare, Volume2, VolumeX } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
