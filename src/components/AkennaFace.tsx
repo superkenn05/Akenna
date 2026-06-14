@@ -15,19 +15,21 @@ export const AkennaFace: React.FC<AkennaFaceProps> = ({ status, isSpeaking, volu
   const isProcessing = status === 'processing';
   const isListening = status === 'listening';
 
+  const faceExpressionClass = status === 'speaking' ? 'animate-face-speak' : status === 'processing' ? 'animate-face-process' : '';
+
   return (
-    <div className="flex flex-col items-center justify-center gap-24 relative face-container">
+    <div className={cn("flex flex-col items-center justify-center gap-24 relative face-container", faceExpressionClass)}>
       {/* Eyes Container */}
-      <div className="flex gap-24 sm:gap-40 items-center justify-center relative">
+      <div className="flex gap-24 sm:gap-40 items-center justify-center relative animate-eyes-blink">
         
         {/* Left Eye */}
         <div 
           className={cn(
-            "w-24 h-24 sm:w-36 sm:h-36 rounded-full transition-all duration-700 ease-in-out relative overflow-hidden",
-            isIdle ? "scale-y-[0.02] opacity-20 blur-[2px] bg-[#33E0FF]" : "animate-eye-blink",
+            "eye-blink-target w-28 h-28 sm:w-44 sm:h-44 rounded-full transition-all duration-700 ease-in-out relative overflow-hidden",
+            isIdle ? "scale-y-[0.02] opacity-20 blur-[2px] bg-[#33E0FF]" : undefined,
             isListening && "bg-[#33E0FF] glow-cyan scale-110",
             isProcessing && "bg-[#33E0FF]/60 blur-[1px] scale-95",
-            status === 'speaking' && "bg-[#3377FF] scale-100 shadow-[0_0_40px_rgba(51,119,255,0.6)]",
+            status === 'speaking' && "bg-[#3377FF] scale-105 shadow-[0_0_40px_rgba(51,119,255,0.6)] animate-eyes-spark",
             isError && "bg-destructive glow-destructive scale-90 animate-pulse"
           )}
         >
@@ -40,8 +42,8 @@ export const AkennaFace: React.FC<AkennaFaceProps> = ({ status, isSpeaking, volu
         {/* Right Eye */}
         <div 
           className={cn(
-            "w-24 h-24 sm:w-36 sm:h-36 rounded-full transition-all duration-700 ease-in-out relative overflow-hidden",
-            isIdle ? "scale-y-[0.02] opacity-20 blur-[2px] bg-[#33E0FF]" : "animate-eye-blink",
+            "eye-blink-target w-28 h-28 sm:w-44 sm:h-44 rounded-full transition-all duration-700 ease-in-out relative overflow-hidden",
+            isIdle ? "scale-y-[0.02] opacity-20 blur-[2px] bg-[#33E0FF]" : undefined,
             isListening && "bg-[#33E0FF] glow-cyan scale-110",
             isProcessing && "bg-[#33E0FF]/60 blur-[1px] scale-95",
             status === 'speaking' && "bg-[#3377FF] scale-100 shadow-[0_0_40px_rgba(51,119,255,0.6)]",
@@ -59,14 +61,16 @@ export const AkennaFace: React.FC<AkennaFaceProps> = ({ status, isSpeaking, volu
       <div className="h-24 flex items-center justify-center overflow-visible">
         <div 
           style={{ 
-            height: isIdle ? '1px' : `${4 + (volume * 60)}px`,
-            width: isIdle ? '40px' : `${60 + (volume * 120)}px`,
-            opacity: !isIdle ? 1 : 0.1,
-            boxShadow: volume > 0.05 && !isIdle ? `0 0 ${15 + volume * 30}px rgba(51, 224, 255, ${0.5 + volume * 0.5})` : 'none',
-            backgroundColor: isError ? 'hsl(var(--destructive))' : '#33E0FF'
+            height: status === 'speaking' ? `${5 + (volume * 50)}px` : '1px',
+            width: status === 'speaking' ? `${65 + (volume * 90)}px` : '40px',
+            opacity: status === 'speaking' ? 1 : 0.1,
+            boxShadow: status === 'speaking' && volume > 0.03 ? `0 0 ${12 + volume * 24}px rgba(51, 224, 255, ${0.65 + volume * 0.35})` : 'none',
+            backgroundColor: isError ? 'hsl(var(--destructive))' : '#33E0FF',
+            transformOrigin: 'center center'
           }}
           className={cn(
-            "rounded-full transition-all duration-100 ease-out",
+            "rounded-full transition-all duration-35 ease-out",
+            status === 'speaking' && "animate-mouth-speak",
             isProcessing && "animate-pulse opacity-40"
           )}
         />
@@ -74,7 +78,7 @@ export const AkennaFace: React.FC<AkennaFaceProps> = ({ status, isSpeaking, volu
 
       {/* Subtle Mood Background Glow */}
       <div className={cn(
-        "absolute -z-10 w-[400px] h-[400px] rounded-full blur-[120px] transition-all duration-1000 opacity-20",
+        "absolute -z-10 w-[360px] h-[260px] rounded-[2rem] blur-[120px] transition-all duration-1000 opacity-20",
         isListening && "bg-cyan-500",
         isProcessing && "bg-blue-400",
         status === 'speaking' && "bg-blue-600",

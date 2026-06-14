@@ -21,6 +21,7 @@ const AkennaAIChatInteractionInputSchema = z.object({
   text: z.string().describe("The user's transcribed speech query."),
   history: z.array(MessageSchema).optional().default([]).describe("Previous messages in the conversation."),
   voiceEnabled: z.boolean().optional().default(true).describe("Whether to generate audio response."),
+  isGreeting: z.boolean().optional().default(false).describe("Whether this is a greeting message."),
 });
 export type AkennaAIChatInteractionInput = z.infer<typeof AkennaAIChatInteractionInputSchema>;
 
@@ -83,6 +84,8 @@ const akennaChatPrompt = ai.definePrompt({
   User query: {{{text}}} `,
 });
 
+const voiceName = process.env.TTS_VOICE_NAME ?? 'Angelica';
+
 // Define the main Genkit flow for Akenna AI chat interaction
 const akennaAIChatInteractionFlow = ai.defineFlow(
   {
@@ -92,6 +95,56 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
   },
   async (input) => {
     try {
+      // Handle greeting
+      if (input.isGreeting) {
+        const greetingText = "Good day, I'm Akenna. How can I help you?";
+        
+        // Skip audio if disabled
+        if (input.voiceEnabled === false) {
+          return { text: greetingText };
+        }
+
+        // Convert greeting to speech using TTS model
+        try {
+          const { media } = await ai.generate({
+            model: googleAI.model('gemini-2.5-flash-preview-tts'),
+            config: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName },
+                },
+              },
+            },
+            prompt: greetingText,
+          });
+
+          if (!media) {
+            return { text: greetingText, error: 'Vocal synthesis module returned no data.' };
+          }
+
+          const audioBuffer = Buffer.from(
+            media.url.substring(media.url.indexOf(',') + 1),
+            'base64'
+          );
+          const wavAudioBase64 = await toWav(audioBuffer);
+
+          return {
+            text: greetingText,
+            audio: 'data:audio/wav;base64,' + wavAudioBase64,
+          };
+        } catch (err: any) {
+          if (err.message?.includes('429') || err.message?.includes('quota')) {
+            return { 
+              text: greetingText, 
+              error: 'Vocal synthesizer is cooling down (Voice Limit). I will respond via text for now.',
+              isQuotaError: true
+            };
+          }
+          return { text: greetingText, error: 'Vocal module inactive.' };
+        }
+      }
+
       // 1. Generate text response from the LLM
       let llmResponse;
       try {
@@ -126,7 +179,7 @@ const akennaAIChatInteractionFlow = ai.defineFlow(
             responseModalities: ['AUDIO'],
             speechConfig: {
               voiceConfig: {
-                prebuiltVoiceConfig: { voiceName: 'Algenib' },
+                prebuiltVoiceConfig: { voiceName },
               },
             },
           },

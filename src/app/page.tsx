@@ -25,6 +25,7 @@ export default function AkennaPage() {
   // Dialogue states
   const [userTranscript, setUserTranscript] = useState('');
   const [history, setHistory] = useState<HistoryMessage[]>([]);
+  const [hasGreeted, setHasGreeted] = useState(false);
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -69,7 +70,7 @@ export default function AkennaPage() {
   }, [status]);
 
   const handleAkennaQuery = async (text: string) => {
-    if (status === 'processing' || status === 'speaking' || !text.trim()) return;
+    if (!isInitialized || status === 'processing' || status === 'speaking' || !text.trim()) return;
     
     setError(null);
     setUserTranscript(text);
@@ -125,10 +126,17 @@ export default function AkennaPage() {
     }
   };
 
+  const stopRecognition = () => {
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch (e) {}
+    }
+  };
+
   const restartRecognition = () => {
     if (recognitionRef.current && isInitialized && status !== 'processing' && status !== 'speaking' && status !== 'error') {
-      try { 
-        recognitionRef.current.start(); 
+      try {
+        recognitionRef.current.start();
+        setStatus('listening');
       } catch (e) {}
     }
   };
@@ -182,6 +190,8 @@ export default function AkennaPage() {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     
     window.speechSynthesis.cancel();
+    stopRecognition();
+    
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-US';
     utterance.rate = 1.0;
@@ -216,24 +226,32 @@ export default function AkennaPage() {
   const playResponse = async (audioBase64: string) => {
     if (!audioContextRef.current || !audioRef.current) return;
     try {
+      stopRecognition();
+      
       setStatus('speaking');
       if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
       
       audioRef.current.src = audioBase64;
       
       const updateVolume = () => {
-        if (analyserRef.current && status === 'speaking') {
+        if (analyserRef.current) {
           const bufferLength = analyserRef.current.frequencyBinCount;
           const dataArray = new Uint8Array(bufferLength);
           analyserRef.current.getByteFrequencyData(dataArray);
           let sum = 0;
           for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
-          setVolume((sum / bufferLength) / 60); 
-          animationFrameRef.current = requestAnimationFrame(updateVolume);
+          const normalized = Math.min(1, (sum / bufferLength) / 40);
+          setVolume(normalized);
+          if (status === 'speaking') {
+            animationFrameRef.current = requestAnimationFrame(updateVolume);
+          }
         }
       };
 
-      audioRef.current.onplay = () => updateVolume();
+      audioRef.current.onplay = () => {
+        updateVolume();
+      };
+      
       audioRef.current.onended = () => {
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         setVolume(0);
@@ -271,6 +289,7 @@ export default function AkennaPage() {
         
         setIsInitialized(true);
         setStatus('listening');
+        setHasGreeted(false); // Reset greeting flag
       } catch (err) {
         setError("Audio system initialization failed.");
         setStatus('error');
@@ -280,6 +299,37 @@ export default function AkennaPage() {
       setIsInitialized(false);
       setStatus('idle');
       setVolume(0);
+      setHasGreeted(false);
+    }
+  };
+
+  // Play greeting when Akenna first wakes up
+  const playGreeting = async () => {
+    if (hasGreeted) {
+      restartRecognition();
+      return;
+    }
+    
+    setHasGreeted(true);
+    stopRecognition();
+    try {
+      const response = await akennaAIChatInteraction({ 
+        text: 'greeting', 
+        history: [], 
+        voiceEnabled: true,
+        isGreeting: true
+      });
+      
+      if (response.audio) {
+        playResponse(response.audio);
+      } else if (response.text) {
+        playBrowserFallback(response.text);
+      } else {
+        restartRecognition();
+      }
+    } catch (err) {
+      console.error("Greeting playback failed:", err);
+      restartRecognition();
     }
   };
 
@@ -296,13 +346,14 @@ export default function AkennaPage() {
     if (isInitialized) {
       initSpeech();
       startMicAnalysis();
-      restartRecognition();
+      // Play greeting when Akenna wakes up, then restart recognition after greeting ends
+      setTimeout(() => playGreeting(), 300);
     }
     return () => { if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current); };
   }, [isInitialized, initSpeech, startMicAnalysis]);
 
   return (
-    <main className="min-h-screen w-full flex flex-col items-center justify-center relative bg-[#050E10] px-6 py-12 overflow-hidden">
+    <main suppressHydrationWarning className="min-h-screen w-full flex flex-col items-center justify-center relative bg-[#050E10] px-6 py-12 overflow-hidden">
       
       {/* Error Overlay - Top Left */}
       {error && (
@@ -363,9 +414,19 @@ export default function AkennaPage() {
                   onChange={(e) => setTestInput(e.target.value)}
                   placeholder="Type a query..."
                   className="bg-black/40 border-white/10 text-white text-xs h-9"
-                  onKeyDown={(e) => e.key === 'Enter' && handleAkennaQuery(testInput)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && testInput.trim()) {
+                      handleAkennaQuery(testInput);
+                      setTestInput('');
+                    }
+                  }}
                 />
-                <Button onClick={() => handleAkennaQuery(testInput)} className="bg-[#33E0FF] text-black h-9 px-3 hover:bg-[#33E0FF]/80">
+                <Button onClick={() => {
+                  if (testInput.trim()) {
+                    handleAkennaQuery(testInput);
+                    setTestInput('');
+                  }
+                }} className="bg-[#33E0FF] text-black h-9 px-3 hover:bg-[#33E0FF]/80">
                   <Send className="w-4 h-4" />
                 </Button>
               </div>

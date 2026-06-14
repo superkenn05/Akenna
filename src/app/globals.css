@@ -77,6 +77,74 @@
   animation: scan-horizontal 1.5s infinite linear;
 }
 
+@keyframes mouth-speak {
+  0%, 100% {
+    transform: translateY(0) scaleX(1);
+  }
+  25% {
+    transform: translateY(1px) scaleX(1.08);
+  }
+  50% {
+    transform: translateY(2px) scaleX(1.15);
+  }
+  75% {
+    transform: translateY(1px) scaleX(1.08);
+  }
+}
+
+.animate-mouth-speak {
+  animation: mouth-speak 0.35s infinite ease-in-out;
+}
+
+@keyframes face-listen {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  30% { transform: translateY(-1px) rotate(-0.8deg); }
+  60% { transform: translateY(1px) rotate(0.8deg); }
+}
+
+.animate-face-listen {
+  animation: face-listen 3s infinite ease-in-out;
+}
+
+@keyframes face-speak {
+  0%, 100% { transform: translate(0, 0) rotate(0deg) scale(1); }
+  25% { transform: translate(0, -1.5px) rotate(0deg) scale(1); }
+  50% { transform: translate(0, -3px) rotate(0deg) scale(1); }
+  75% { transform: translate(0, -1.5px) rotate(0deg) scale(1); }
+}
+
+.animate-face-speak {
+  animation: face-speak 0.7s infinite ease-in-out;
+}
+
+@keyframes face-process {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-1px) rotate(0deg); }
+}
+
+.animate-face-process {
+  animation: face-process 2.4s infinite ease-in-out;
+}
+
+@keyframes eyes-spark {
+  0%, 100% { box-shadow: 0 0 0 rgba(255,255,255,0); }
+  50% { box-shadow: 0 0 25px rgba(255,255,255,0.25); }
+}
+
+.animate-eyes-spark {
+  animation: eyes-spark 1.2s infinite ease-in-out;
+}
+
+@keyframes eyes-blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.15); }
+}
+
+.animate-eyes-blink .eye-blink-target {
+  transform-origin: center center;
+  animation: eyes-blink 4s infinite ease-in-out;
+}
+
 .face-container {
   perspective: 1000px;
 }
